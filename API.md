@@ -60,6 +60,38 @@ Google Gemini compatible.
 - Auth: `x-goog-api-key` header, `key` query param, or Bearer token
 - Errors: `{ error: { code, message, status } }`
 
+### POST /v1/images/generations
+
+OpenAI Images API compatibility endpoint. It accepts the common JSON image
+generation request and internally translates it to Codex's `image_generation`
+Responses tool. `gpt-image-2` is also exposed by `/v1/models`.
+
+```jsonc
+{
+  "model": "gpt-image-2",
+  "prompt": "Draw a red circle on a white background.",
+  "size": "1024x1024",
+  "response_format": "b64_json"
+}
+```
+
+- `stream: true` is supported. The compatibility SSE events are
+  `image_generation.partial_image` and `image_generation.completed`.
+- `n` must be `1`: Codex's image tool produces one image per invocation, and
+  CLIProxyAPI's Codex route likewise does not emulate multiple invocations.
+- `response_format` may be `b64_json` (default) or `url`. The `url` response is
+  a self-contained `data:` URL because the proxy does not host generated files.
+- Requires a ChatGPT Plus or higher account.
+
+### POST /v1/images/edits
+
+Reference-image editing compatibility endpoint. It accepts standard
+`multipart/form-data` fields (`image` or `image[]`, `prompt`, and optional
+generation fields) and also a JSON form with `images: [{"image_url":"..."}]`.
+Uploaded files are converted to `input_image` data URLs before being sent to
+Codex. `mask` is rejected explicitly because the current Codex image tool does
+not support mask-based local editing.
+
 ### POST /v1/responses
 Native Codex Responses API passthrough (WebSocket transport).
 

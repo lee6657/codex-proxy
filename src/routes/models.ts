@@ -18,6 +18,20 @@ import type { ApiKeyPool } from "../auth/api-key-pool.js";
 
 /** Stable timestamp used for all model `created` fields (2023-11-14T22:13:20Z). */
 const MODEL_CREATED_TIMESTAMP = 1700000000;
+const IMAGE_MODEL_ID = "gpt-image-2";
+const IMAGE_MODEL_INFO: CodexModelInfo = {
+  id: IMAGE_MODEL_ID,
+  displayName: "GPT Image 2",
+  description: "Image generation model exposed through the OpenAI Images API compatibility route.",
+  isDefault: false,
+  supportedReasoningEfforts: [],
+  defaultReasoningEffort: "",
+  inputModalities: ["text", "image"],
+  outputModalities: ["image"],
+  supportsPersonality: false,
+  upgrade: null,
+  source: "custom",
+};
 const DEFAULT_EFFECTIVE_CONTEXT_WINDOW_PERCENT = 95;
 const AUTO_COMPACT_CONTEXT_WINDOW_PERCENT = 80;
 const AUTO_COMPACT_TOKEN_LIMIT_OVERRIDES: Record<string, number> = {
@@ -85,6 +99,9 @@ export function createModelRoutes(apiKeyPool?: ApiKeyPool): Hono {
         modelsById.set(modelId, toRuntimeOpenAIModel(modelId));
       }
     }
+    if (!modelsById.has(IMAGE_MODEL_ID)) {
+      modelsById.set(IMAGE_MODEL_ID, toRuntimeOpenAIModel(IMAGE_MODEL_ID));
+    }
 
     const response: OpenAIModelList = { object: "list", data: [...modelsById.values()] };
     return c.json(response);
@@ -95,8 +112,10 @@ export function createModelRoutes(apiKeyPool?: ApiKeyPool): Hono {
   app.get("/v1/models/catalog", (c) => {
     // Default outputModalities to ["text"] for chat-family entries that don't
     // set it explicitly, matching the interface's documented default.
+    const catalog = getModelCatalog();
+    if (!catalog.some((model) => model.id === IMAGE_MODEL_ID)) catalog.push(IMAGE_MODEL_INFO);
     return c.json(
-      getModelCatalog().map((m) => ({
+      catalog.map((m) => ({
         ...m,
         outputModalities: m.outputModalities ?? ["text"],
       })),
@@ -106,6 +125,8 @@ export function createModelRoutes(apiKeyPool?: ApiKeyPool): Hono {
   app.get("/v1/models/:modelId", (c) => {
     const modelId = c.req.param("modelId");
     const catalog = getModelCatalog();
+
+    if (modelId === IMAGE_MODEL_ID) return c.json(toRuntimeOpenAIModel(IMAGE_MODEL_ID));
 
     const info = catalog.find((m) => m.id === modelId);
     if (info) return c.json(toOpenAIModel(info));
@@ -128,6 +149,7 @@ export function createModelRoutes(apiKeyPool?: ApiKeyPool): Hono {
   // Extended endpoint: model details with reasoning efforts
   app.get("/v1/models/:modelId/info", (c) => {
     const modelId = c.req.param("modelId");
+    if (modelId === IMAGE_MODEL_ID) return c.json(IMAGE_MODEL_INFO);
     const info = getModelInfo(modelId);
     if (!info) {
       c.status(404);
