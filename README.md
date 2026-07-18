@@ -30,7 +30,7 @@
   <br>
 
   <a href="https://x.com/IceBearMiner"><img src="https://img.shields.io/badge/Follow-@IceBearMiner-000?style=flat-square&logo=x&logoColor=white" alt="X"></a>
-  <a href="https://github.com/icebear0828/codex-proxy/issues"><img src="https://img.shields.io/github/issues/icebear0828/codex-proxy?style=flat-square" alt="Issues"></a>
+  <a href="https://github.com/lee6657/codex-proxy/issues"><img src="https://img.shields.io/github/issues/lee6657/codex-proxy?style=flat-square" alt="Issues"></a>
   <a href="#-赞赏--交流"><img src="https://img.shields.io/badge/赞赏-微信-07C160?style=flat-square&logo=wechat&logoColor=white" alt="赞赏"></a>
 
   <br><br>
@@ -64,7 +64,7 @@
 
 ---
 
-**Codex Proxy** 是一个轻量级本地中转服务，将 [Codex Desktop](https://openai.com/codex) 的 Responses API 转换为多种标准协议接口（OpenAI `/v1/chat/completions`、Anthropic `/v1/messages`、Gemini、Codex `/v1/responses` 直通，以及可选 Ollama `/api/chat` 兼容桥接）。通过本项目，您可以在 Cursor、Claude Code、Continue 等任何兼容上述协议的客户端中直接使用 Codex 编程模型。
+**Codex Proxy** 是一个轻量级本地中转服务，将 [Codex Desktop](https://openai.com/codex) 的 Responses API 转换为多种标准协议接口（OpenAI `/v1/chat/completions` 与 `/v1/images/*`、Anthropic `/v1/messages`、Gemini、Codex `/v1/responses` 直通，以及可选 Ollama `/api/chat` 兼容桥接）。通过本项目，您可以在 Cursor、Claude Code、Continue 等任何兼容上述协议的客户端中直接使用 Codex 编程模型。
 
 只需一个 ChatGPT 账号（或接入第三方 API 中转站），配合本代理即可在本地搭建一个专属的 AI 编程助手网关。
 
@@ -72,42 +72,32 @@
 
 > **前置条件**：你需要一个 ChatGPT 账号（免费账号即可）。如果还没有，先去 [chat.openai.com](https://chat.openai.com) 注册一个。
 
-### 方式一：桌面应用（推荐新手）
+### 方式一：桌面应用
 
-下载 → 安装 → 打开就能用。
-
-**下载安装包** — 打开 [Releases 页面](https://github.com/icebear0828/codex-proxy/releases)，根据系统下载：
-
-| 系统 | 文件 |
-|------|------|
-| Windows | `Codex Proxy Setup x.x.x.exe` |
-| macOS | `Codex Proxy-x.x.x.dmg` |
-| Linux | `Codex Proxy-x.x.x.AppImage` |
-
-安装后打开应用，点击登录按钮用 ChatGPT 账号登录。浏览器访问 `http://localhost:8080` 即可看到控制面板。
+本仓库暂未发布包含 Images API 扩展的桌面安装包。请先使用下方 Docker 或源码安装方式；后续 Release 会发布在 [lee6657/codex-proxy Releases](https://github.com/lee6657/codex-proxy/releases)。
 
 ### 方式二：Docker 部署
 
 ```bash
-mkdir codex-proxy && cd codex-proxy
-curl -O https://raw.githubusercontent.com/icebear0828/codex-proxy/master/docker-compose.yml
-curl -O https://raw.githubusercontent.com/icebear0828/codex-proxy/master/.env.example
+git clone -b dev https://github.com/lee6657/codex-proxy.git
+cd codex-proxy
 cp .env.example .env
+docker compose build
 docker compose up -d
 # 打开 http://localhost:8080 登录
 ```
 
-> 账号数据保存在 `data/` 文件夹，重启不丢失。其他容器连本服务用宿主机 IP（如 `192.168.x.x:8080`），不要用 `localhost`。
+> Compose 默认从本仓库构建镜像，确保包含 Images API 扩展。账号数据保存在 `data/` 文件夹，重启不丢失。其他容器连本服务用宿主机 IP（如 `192.168.x.x:8080`），不要用 `localhost`。
 
 取消 `docker-compose.yml` 中 Watchtower 的注释即可自动更新。若要在 Docker 中启用 Ollama 兼容桥接，请参考下方 [Ollama Bridge 配置](#ollama-bridge-配置)。
 
 ### 方式三：源码运行
 
 ```bash
-git clone https://github.com/icebear0828/codex-proxy.git
+git clone -b dev https://github.com/lee6657/codex-proxy.git
 cd codex-proxy
-npm install                        # 安装后端依赖
-cd web && npm install && cd ..     # 安装前端依赖
+npm ci                             # 安装后端锁定依赖
+cd web && npm ci && cd ..          # 安装前端锁定依赖
 npm run dev                        # 开发模式（热重载）
 # 或: npm run build && npm start   # 生产模式
 ```
@@ -117,7 +107,7 @@ npm run dev                        # 开发模式（热重载）
 > # 1. 安装 Rust（如果没有的话）
 > curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 > # 2. 编译 TLS addon
-> cd native && npm install && npm run build && cd ..
+> cd native && npm ci && npm run build && cd ..
 > ```
 > Docker / 桌面应用已内置编译好的 addon，无需手动编译。
 
@@ -237,19 +227,19 @@ curl http://localhost:8080/v1/chat/completions \
 
 ### 🖼️ 图像生成
 
-图像生成走 `/v1/responses` 的 `image_generation` 内置工具，后端固定为 `gpt-image-2`。
+标准 OpenAI 客户端可直接调用 `/v1/images/generations`，并将模型设为 `gpt-image-2`；代理会在内部转换为 Codex 的 `image_generation` 工具调用。原生 `/v1/responses` 调用方式也继续支持。
 
 **前提**：ChatGPT **Plus 及以上** 账号（free 账号上游会静默剥掉工具，模型会降级用 SVG 文本假装画图）。
 
 ```bash
-curl -N http://localhost:8080/v1/responses \
+curl http://localhost:8080/v1/images/generations \
   -H "Authorization: Bearer $PROXY_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "gpt-5.5",
-    "stream": true,
-    "input": [{"role":"user","content":"Draw a red circle on white background."}],
-    "tools": [{"type":"image_generation","size":"3840x2160"}]
+    "model": "gpt-image-2",
+    "prompt": "Draw a red circle on white background.",
+    "size": "1024x1024",
+    "response_format": "b64_json"
   }'
 ```
 
@@ -257,7 +247,7 @@ curl -N http://localhost:8080/v1/responses \
 
 事件流里 `image_generation_call` item 的 `result` 字段即 base64 编码的图像；`revised_prompt` 是上游改写后的最终提示词。
 
-**编辑模式**（带参考图）：在 user message 的 `content` 里追加 `{"type":"input_image","image_url":"data:image/png;base64,..."}` 即可。
+**编辑模式**：使用标准 `/v1/images/edits` multipart 接口上传参考图：`curl -F "model=gpt-image-2" -F "prompt=把天空改成黄昏" -F "image=@source.png" http://localhost:8080/v1/images/edits`。也可以继续在原生 Responses 请求的 user `content` 中加入 `{"type":"input_image","image_url":"data:image/png;base64,..."}`。
 
 > `/v1/chat/completions` 兼容路径会接受 `image_generation` 工具，避免 OpenAI 客户端因 schema 失败；但图像 payload 只有 `/v1/responses` 会稳定透出 `image_generation_call.result`。需要拿到图片字节时请使用 `/v1/responses`。
 
@@ -623,7 +613,7 @@ tls:
   force_http11: false              # HTTP/2 失败时自动降级 HTTP/1.1；true = 强制 HTTP/1.1
 ```
 
-> 内置 Rust native addon（reqwest + rustls），TLS 指纹与真实 Codex Desktop 完全一致。源码运行需先编译：`cd native && npm install && npm run build`。
+> 内置 Rust native addon（reqwest + rustls），TLS 指纹与真实 Codex Desktop 完全一致。源码运行需先编译：`cd native && npm ci && npm run build`。
 
 ### API 密钥
 
@@ -750,6 +740,8 @@ curl -N http://localhost:8080/official-agent/threads/{threadId}/turns \
 | 端点 | 方法 | 说明 |
 |------|------|------|
 | `/v1/chat/completions` | POST | OpenAI 格式聊天补全 |
+| `/v1/images/generations` | POST | OpenAI 格式图片生成（`gpt-image-2`） |
+| `/v1/images/edits` | POST | OpenAI 格式参考图编辑 |
 | `/v1/responses` | POST | Codex Responses API 直通 |
 | `/v1/responses/compact` | POST | Codex compact 响应代理 |
 | `/v1/messages` | POST | Anthropic 格式聊天补全 |
@@ -894,7 +886,7 @@ Codex Proxy 主要由个人维护，但一路上收到了很多社区帮助。�
 
 [@SsuJojo](https://github.com/SsuJojo) · [@TutuchanXD](https://github.com/TutuchanXD) · [@kanweiwei](https://github.com/kanweiwei) · [@et2010](https://github.com/et2010) · [@d-demand-priv](https://github.com/d-demand-priv) · [@hangox](https://github.com/hangox) · [@jarvisluk](https://github.com/jarvisluk) · [@jeasonstudio](https://github.com/jeasonstudio) · [@JPClaw12](https://github.com/JPClaw12) · [@lezi-fun](https://github.com/lezi-fun) · [@lookvincent](https://github.com/lookvincent) · [@pocper1](https://github.com/pocper1) · [@woai66](https://github.com/woai66) · [@xsShuang](https://github.com/xsShuang) · [@yuwei5380](https://github.com/yuwei5380) · [@aeltorio](https://github.com/aeltorio) · [@williamjameshandley](https://github.com/williamjameshandley) · [@FlavienKlr](https://github.com/FlavienKlr) · [@zyycn](https://github.com/zyycn)
 
-也感谢所有在 [Issues](https://github.com/icebear0828/codex-proxy/issues) 里提交 bug 复现、日志、兼容性反馈和功能建议的用户。这些反馈直接推动了账号轮换、代理兼容、Dashboard、Ollama Bridge、模型兼容和错误观测等能力的迭代。
+也感谢所有在 [Issues](https://github.com/lee6657/codex-proxy/issues) 里提交 bug 复现、日志、兼容性反馈和功能建议的用户。这些反馈直接推动了账号轮换、代理兼容、Dashboard、Ollama Bridge、模型兼容和错误观测等能力的迭代。
 
 ## ⭐ Star History
 

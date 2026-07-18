@@ -30,7 +30,7 @@
   <br>
 
   <a href="https://x.com/IceBearMiner"><img src="https://img.shields.io/badge/Follow-@IceBearMiner-000?style=flat-square&logo=x&logoColor=white" alt="X"></a>
-  <a href="https://github.com/icebear0828/codex-proxy/issues"><img src="https://img.shields.io/github/issues/icebear0828/codex-proxy?style=flat-square" alt="Issues"></a>
+  <a href="https://github.com/lee6657/codex-proxy/issues"><img src="https://img.shields.io/github/issues/lee6657/codex-proxy?style=flat-square" alt="Issues"></a>
   <a href="#-donate"><img src="https://img.shields.io/badge/Donate-WeChat-07C160?style=flat-square&logo=wechat&logoColor=white" alt="Donate"></a>
 
 </div>
@@ -45,44 +45,36 @@
 
 ---
 
-**Codex Proxy** is a lightweight local gateway that translates the [Codex Desktop](https://openai.com/codex) Responses API into multiple standard protocol endpoints — OpenAI `/v1/chat/completions`, Anthropic `/v1/messages`, Gemini, Codex `/v1/responses` passthrough, and an optional Ollama-compatible `/api/chat` bridge. Use Codex coding models directly in Cursor, Claude Code, Continue, or any compatible client.
+**Codex Proxy** is a lightweight local gateway that translates the [Codex Desktop](https://openai.com/codex) Responses API into multiple standard protocol endpoints — OpenAI `/v1/chat/completions` and `/v1/images/*`, Anthropic `/v1/messages`, Gemini, Codex `/v1/responses` passthrough, and an optional Ollama-compatible `/api/chat` bridge. Use Codex coding models directly in Cursor, Claude Code, Continue, or any compatible client.
 
 Just a ChatGPT account (or a third-party API key provider) and this proxy — your own personal AI coding assistant gateway, running locally.
 
 ## 🚀 Quick Start
 
-### Desktop App (Easiest)
+### Desktop App
 
-Download the installer from [GitHub Releases](https://github.com/icebear0828/codex-proxy/releases):
-
-| Platform | Installer |
-|----------|-----------|
-| Windows | `Codex Proxy Setup x.x.x.exe` |
-| macOS | `Codex Proxy-x.x.x.dmg` |
-| Linux | `Codex Proxy-x.x.x.AppImage` |
-
-Open the app, log in with your ChatGPT account. Dashboard at `http://localhost:8080`.
+This repository does not yet publish desktop installers that include the Images API extension. Use Docker or a source install below for now; future installers will be published in [lee6657/codex-proxy Releases](https://github.com/lee6657/codex-proxy/releases).
 
 ### Docker
 
 ```bash
-mkdir codex-proxy && cd codex-proxy
-curl -O https://raw.githubusercontent.com/icebear0828/codex-proxy/master/docker-compose.yml
-curl -O https://raw.githubusercontent.com/icebear0828/codex-proxy/master/.env.example
+git clone -b dev https://github.com/lee6657/codex-proxy.git
+cd codex-proxy
 cp .env.example .env
+docker compose build
 docker compose up -d
 # Open http://localhost:8080 to log in
 ```
 
-> Data persists in `data/`. Cross-container access: use host LAN IP (e.g. `192.168.x.x:8080`), not `localhost`. Uncomment Watchtower in `docker-compose.yml` for auto-updates. To enable the Ollama-compatible bridge in Docker, see [Ollama Bridge configuration](#ollama-bridge-configuration).
+> Compose builds this repository by default, so the resulting image includes the Images API extension. Data persists in `data/`. Cross-container access: use host LAN IP (e.g. `192.168.x.x:8080`), not `localhost`. To enable the Ollama-compatible bridge in Docker, see [Ollama Bridge configuration](#ollama-bridge-configuration).
 
 ### From Source
 
 ```bash
-git clone https://github.com/icebear0828/codex-proxy.git
+git clone -b dev https://github.com/lee6657/codex-proxy.git
 cd codex-proxy
-npm install                        # Backend dependencies
-cd web && npm install && cd ..     # Frontend dependencies
+npm ci                             # Locked backend dependencies
+cd web && npm ci && cd ..          # Locked frontend dependencies
 npm run dev                        # Dev mode (hot reload)
 # Or: npm run build && npm start   # Production mode
 ```
@@ -90,7 +82,7 @@ npm run dev                        # Dev mode (hot reload)
 > **Requires Rust toolchain** (for TLS native addon):
 > ```bash
 > curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-> cd native && npm install && npm run build && cd ..
+> cd native && npm ci && npm run build && cd ..
 > ```
 > Docker / desktop app ship pre-built addons — no manual compilation needed.
 
@@ -208,19 +200,19 @@ If you see streaming AI text, the setup is working. If you get 401, double-check
 
 ### 🖼️ Image Generation
 
-Image generation rides on `/v1/responses` via the built-in `image_generation` tool; the backend is always `gpt-image-2`.
+Standard OpenAI clients can call `/v1/images/generations` directly with `gpt-image-2`; the proxy translates that request to Codex's built-in `image_generation` tool. The native `/v1/responses` form remains supported.
 
 **Prerequisite**: a **ChatGPT Plus or higher** account (free accounts have the tool silently stripped by upstream, and the model falls back to replying with an SVG snippet).
 
 ```bash
-curl -N http://localhost:8080/v1/responses \
+curl http://localhost:8080/v1/images/generations \
   -H "Authorization: Bearer $PROXY_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "gpt-5.5",
-    "stream": true,
-    "input": [{"role":"user","content":"Draw a red circle on white background."}],
-    "tools": [{"type":"image_generation","size":"3840x2160"}]
+    "model": "gpt-image-2",
+    "prompt": "Draw a red circle on white background.",
+    "size": "1024x1024",
+    "response_format": "b64_json"
   }'
 ```
 
@@ -228,7 +220,7 @@ Tunable fields: `size` (1024×1024 / 1024×1536 / 1536×1024 / 2048×2048 / 2048
 
 In the stream, the `image_generation_call` item's `result` field is a base64-encoded image; `revised_prompt` contains the final prompt used by the model.
 
-**Edit mode** (with a reference image): include `{"type":"input_image","image_url":"data:image/png;base64,..."}` in the user message `content` array.
+**Edit mode**: use the standard multipart `/v1/images/edits` route: `curl -F "model=gpt-image-2" -F "prompt=Change the sky to sunset" -F "image=@source.png" http://localhost:8080/v1/images/edits`. The native Responses request can still include `{"type":"input_image","image_url":"data:image/png;base64,..."}` in user message content.
 
 > The `/v1/chat/completions` compatibility path accepts the `image_generation` tool so OpenAI clients do not fail schema validation, but image payloads are only exposed reliably through `/v1/responses` as `image_generation_call.result`. Use `/v1/responses` when you need the image bytes.
 
@@ -609,6 +601,8 @@ On first startup, if `data/local.yaml` is missing, Codex Proxy creates it with `
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/v1/chat/completions` | POST | OpenAI format chat completions |
+| `/v1/images/generations` | POST | OpenAI image generation (`gpt-image-2`) |
+| `/v1/images/edits` | POST | OpenAI reference-image editing |
 | `/v1/responses` | POST | Codex Responses API passthrough |
 | `/v1/responses/compact` | POST | Codex compact response proxy |
 | `/v1/messages` | POST | Anthropic format chat completions |
@@ -756,7 +750,7 @@ Codex Proxy is primarily maintained by one person, but it has been improved by a
 
 [@SsuJojo](https://github.com/SsuJojo) · [@TutuchanXD](https://github.com/TutuchanXD) · [@kanweiwei](https://github.com/kanweiwei) · [@et2010](https://github.com/et2010) · [@d-demand-priv](https://github.com/d-demand-priv) · [@hangox](https://github.com/hangox) · [@jarvisluk](https://github.com/jarvisluk) · [@jeasonstudio](https://github.com/jeasonstudio) · [@JPClaw12](https://github.com/JPClaw12) · [@lezi-fun](https://github.com/lezi-fun) · [@lookvincent](https://github.com/lookvincent) · [@pocper1](https://github.com/pocper1) · [@woai66](https://github.com/woai66) · [@xsShuang](https://github.com/xsShuang) · [@yuwei5380](https://github.com/yuwei5380) · [@aeltorio](https://github.com/aeltorio) · [@williamjameshandley](https://github.com/williamjameshandley) · [@FlavienKlr](https://github.com/FlavienKlr)
 
-Thanks as well to everyone who opened [Issues](https://github.com/icebear0828/codex-proxy/issues) with bug reproductions, logs, compatibility reports, and feature suggestions. Those reports directly shaped account rotation, proxy compatibility, the Dashboard, Ollama Bridge, model compatibility, and error observability.
+Thanks as well to everyone who opened [Issues](https://github.com/lee6657/codex-proxy/issues) with bug reproductions, logs, compatibility reports, and feature suggestions. Those reports directly shaped account rotation, proxy compatibility, the Dashboard, Ollama Bridge, model compatibility, and error observability.
 
 ## 📄 License
 

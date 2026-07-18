@@ -1,8 +1,8 @@
 services:
   codex-proxy:
-    image: ghcr.io/icebear0828/codex-proxy:latest
-    # To build from source instead: comment out 'image' above, uncomment 'build' below
-    # build: .
+    # Build this repository so the running image includes local extensions
+    # such as the OpenAI Images API compatibility endpoints.
+    build: .
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
