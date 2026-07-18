@@ -60,6 +60,32 @@ Google Gemini 兼容接口。
 - 鉴权：`x-goog-api-key` 请求头、`key` 查询参数、或 Bearer token
 - 错误格式：`{ error: { code, message, status } }`
 
+### POST /v1/images/generations
+
+OpenAI Images API 兼容接口，支持 `gpt-image-1.5` 和 `gpt-image-2`。代理优先直连
+Codex 原生 `/images/generations`；如果 `gpt-image-2` 的直连接口返回 404/405，
+则自动回退到 Responses `image_generation` 工具。
+
+```jsonc
+{
+  "model": "gpt-image-2",
+  "prompt": "画一只海獭",
+  "size": "1024x1024",
+  "n": 1,
+  "response_format": "b64_json",
+  "stream": false
+}
+```
+
+- 直连模式原样转发 `n`，是否支持多图由上游决定；工具回退仅支持 `n=1`。
+- `response_format` 支持 `b64_json`（默认）和 `url`。
+- 图片模型会出现在 `/v1/models`，但不能发送到 `/v1/chat/completions`。
+
+### POST /v1/images/edits
+
+支持 JSON 参考图和标准 multipart 文件上传。multipart 文件会转换为 data URL 后
+发给 Codex 原生 `/images/edits`。直连模式支持 `mask`；工具回退不支持 mask。
+
 ### POST /v1/responses
 原生 Codex Responses API 透传（底层走 WebSocket）。
 

@@ -332,6 +332,7 @@ describe("GET /v1/models with runtime API keys", () => {
 
     expect(body.data.some((m: { id: string }) => m.id === "my-runtime-model")).toBe(true);
     expect(body.data.some((m: { id: string }) => m.id === "gpt-5.4")).toBe(true);
+    expect(body.data.some((m: { id: string }) => m.id === "gpt-image-1.5")).toBe(true);
     expect(body.data.some((m: { id: string }) => m.id === "gpt-image-2")).toBe(true);
   });
 
@@ -382,7 +383,7 @@ describe("GET /v1/models with runtime API keys", () => {
     expect(backendLimitModel?.auto_compact_token_limit).toBe(120_000);
   });
 
-  it("keeps the image-only model in the loaded capability catalog", async () => {
+  it("keeps the built-in image-only models in the loaded capability catalog", async () => {
     applyBackendModelsForPlan("plus", [{
       slug: "gpt-5.4",
       display_name: "GPT-5.4",
@@ -392,12 +393,16 @@ describe("GET /v1/models with runtime API keys", () => {
     const models = await (await app.request("/v1/models")).json() as {
       data: Array<{ id: string }>;
     };
-    expect(models.data.some((model) => model.id === "gpt-image-2")).toBe(true);
+    expect(models.data.filter((model) => model.id.startsWith("gpt-image-")).map((model) => model.id).sort()).toEqual([
+      "gpt-image-1.5",
+      "gpt-image-2",
+    ]);
 
     const catalog = await (await app.request("/v1/models/catalog")).json() as Array<{
       id: string;
       outputModalities?: string[];
     }>;
+    expect(catalog.find((model) => model.id === "gpt-image-1.5")?.outputModalities).toEqual(["image"]);
     expect(catalog.find((model) => model.id === "gpt-image-2")?.outputModalities).toEqual(["image"]);
   });
 

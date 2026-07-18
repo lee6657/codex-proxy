@@ -17,6 +17,46 @@ function imageResponse() {
 }
 
 describe("POST /v1/images/generations", () => {
+  it("uses the direct Codex Images API for gpt-image-1.5 and preserves its response", async () => {
+    const responsesFetch = vi.fn(async () => imageResponse());
+    const directImagesFetch = vi.fn(async () => new Response(JSON.stringify({
+      created: 1_700_000_002,
+      data: [{ b64_json: "ZGlyZWN0" }],
+    }), { headers: { "Content-Type": "application/json" } }));
+    const app = createImagesRoutes(responsesFetch, { directImagesFetch });
+
+    const res = await app.request("/v1/images/generations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "gpt-image-1.5", prompt: "Draw a cat", n: 2 }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ created: 1_700_000_002, data: [{ b64_json: "ZGlyZWN0" }] });
+    expect(directImagesFetch).toHaveBeenCalledWith("generations", {
+      model: "gpt-image-1.5",
+      prompt: "Draw a cat",
+      n: 2,
+    }, expect.any(AbortSignal));
+    expect(responsesFetch).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the Responses image tool when the direct image-2 endpoint is unavailable", async () => {
+    const responsesFetch = vi.fn(async () => imageResponse());
+    const directImagesFetch = vi.fn(async () => new Response("not found", { status: 404 }));
+    const app = createImagesRoutes(responsesFetch, { directImagesFetch });
+
+    const res = await app.request("/v1/images/generations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "gpt-image-2", prompt: "Draw a cat" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(directImagesFetch).toHaveBeenCalledOnce();
+    expect(responsesFetch).toHaveBeenCalledOnce();
+  });
+
   it("translates a standard Images request to the Responses image tool", async () => {
     const responsesFetch = vi.fn(async () => imageResponse());
     const app = createImagesRoutes(responsesFetch);
@@ -117,6 +157,35 @@ describe("POST /v1/images/generations", () => {
 });
 
 describe("POST /v1/images/edits", () => {
+  it("forwards reference images, masks, and n to the direct edits endpoint", async () => {
+    const responsesFetch = vi.fn(async () => imageResponse());
+    const directImagesFetch = vi.fn(async () => new Response(JSON.stringify({ data: [] }), {
+      headers: { "Content-Type": "application/json" },
+    }));
+    const app = createImagesRoutes(responsesFetch, { directImagesFetch });
+    const res = await app.request("/v1/images/edits", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-image-2",
+        prompt: "Change this",
+        n: 2,
+        images: [{ image_url: "data:image/png;base64,aA==" }],
+        mask: { image_url: "data:image/png;base64,bQ==" },
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(directImagesFetch).toHaveBeenCalledWith("edits", {
+      model: "gpt-image-2",
+      prompt: "Change this",
+      n: 2,
+      images: [{ image_url: "data:image/png;base64,aA==" }],
+      mask: { image_url: "data:image/png;base64,bQ==" },
+    }, expect.any(AbortSignal));
+    expect(responsesFetch).not.toHaveBeenCalled();
+  });
+
   it("accepts JSON reference images and forwards them as input_image parts", async () => {
     const responsesFetch = vi.fn(async () => imageResponse());
     const app = createImagesRoutes(responsesFetch);
@@ -169,7 +238,7 @@ describe("POST /v1/images/edits", () => {
   });
 });
 
-describe("gpt-image-2 model discovery", () => {
+describe("image model discovery", () => {
   it("does not appear alone before the upstream model catalog has loaded", async () => {
     const app = createModelRoutes();
     const models = await (await app.request("/v1/models")).json() as { data: Array<{ id: string }> };

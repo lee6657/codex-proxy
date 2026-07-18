@@ -63,8 +63,10 @@ Google Gemini compatible.
 ### POST /v1/images/generations
 
 OpenAI Images API compatibility endpoint. It accepts the common JSON image
-generation request and internally translates it to Codex's `image_generation`
-Responses tool. `gpt-image-2` is also exposed by `/v1/models`.
+generation request and directly proxies Codex's native Images API for
+`gpt-image-1.5` and `gpt-image-2`. If the native `gpt-image-2` endpoint returns
+404/405, the proxy falls back to the Responses `image_generation` tool. Both
+models are exposed by `/v1/models`.
 
 ```jsonc
 {
@@ -77,23 +79,22 @@ Responses tool. `gpt-image-2` is also exposed by `/v1/models`.
 
 - `stream: true` is supported. The compatibility SSE events are
   `image_generation.partial_image` and `image_generation.completed`.
-- `n` must be `1`: Codex's image tool produces one image per invocation, and
-  CLIProxyAPI's Codex route likewise does not emulate multiple invocations.
+- The direct Images path forwards `n` to upstream and can return multiple
+  images. The `gpt-image-2` Responses-tool fallback requires `n=1`.
 - `response_format` may be `b64_json` (default) or `url`. The `url` response is
   a self-contained `data:` URL because the proxy does not host generated files.
 - Requires a ChatGPT Plus or higher account.
-- `/v1/models` is a capability-wide catalog. Although `gpt-image-2` appears
-  there, it is image-only and is rejected by `/v1/chat/completions`; use the
-  Images endpoints above instead.
+- `/v1/models` is a capability-wide catalog. Image-only models are rejected by
+  `/v1/chat/completions`; use the Images endpoints above instead.
 
 ### POST /v1/images/edits
 
 Reference-image editing compatibility endpoint. It accepts standard
 `multipart/form-data` fields (`image` or `image[]`, `prompt`, and optional
 generation fields) and also a JSON form with `images: [{"image_url":"..."}]`.
-Uploaded files are converted to `input_image` data URLs before being sent to
-Codex. `mask` is rejected explicitly because the current Codex image tool does
-not support mask-based local editing.
+Uploaded files and masks are converted to data URLs before being sent to Codex's
+native Images edits endpoint. Masks remain unavailable only when
+`gpt-image-2` has to use the Responses-tool fallback.
 
 ### POST /v1/responses
 Native Codex Responses API passthrough (WebSocket transport).

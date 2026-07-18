@@ -33,18 +33,21 @@ vi.mock("@src/proxy/ws-transport.js", () => ({
 }));
 
 function makeTransport(): TlsTransport & {
+  lastUrl: string | null;
   lastHeaders: Record<string, string> | null;
   lastBody: string | null;
 } {
   const t = {
+    lastUrl: null as string | null,
     lastHeaders: null as Record<string, string> | null,
     lastBody: null as string | null,
     post: vi.fn(
       async (
-        _url: string,
+        url: string,
         headers: Record<string, string>,
         body: string,
       ): Promise<TlsTransportResponse> => {
+        t.lastUrl = url;
         t.lastHeaders = headers;
         t.lastBody = body;
         const encoder = new TextEncoder();
@@ -231,6 +234,43 @@ describe("codex-api headers", () => {
         "x-codex-window-id": transport.lastHeaders!["x-codex-window-id"],
         "x-codex-parent-thread-id": "parent-123",
       });
+    });
+  });
+
+  describe("direct Images path", () => {
+    it("posts generations requests to the Codex Images endpoint", async () => {
+      const api = await createApi();
+      const response = await api.createImageResponse("generations", {
+        model: "gpt-image-1.5",
+        prompt: "Draw a cat",
+        stream: false,
+      });
+
+      expect(transport.lastUrl).toBe("https://test.example/codex/images/generations");
+      expect(transport.lastHeaders?.Accept).toBe("application/json");
+      expect(transport.lastHeaders?.["x-codex-installation-id"]).toBe(
+        "11111111-2222-3333-4444-555555555555",
+      );
+      expect(JSON.parse(transport.lastBody!)).toEqual({
+        model: "gpt-image-1.5",
+        prompt: "Draw a cat",
+        stream: false,
+      });
+      await response.body?.cancel();
+    });
+
+    it("requests SSE for streaming edits", async () => {
+      const api = await createApi();
+      const response = await api.createImageResponse("edits", {
+        model: "gpt-image-2",
+        prompt: "Change it",
+        images: [{ image_url: "data:image/png;base64,aA==" }],
+        stream: true,
+      });
+
+      expect(transport.lastUrl).toBe("https://test.example/codex/images/edits");
+      expect(transport.lastHeaders?.Accept).toBe("text/event-stream");
+      await response.body?.cancel();
     });
   });
 

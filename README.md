@@ -215,9 +215,10 @@ curl http://localhost:8080/v1/chat/completions \
 | `gpt-5-codex-mini` | medium / high | — | — | — | 文本 | 轻量 Codex / CLI 编程模型 |
 | `gpt-oss-120b` | low / medium / high | 131,072 | — | — | 文本 | 开源 120B 模型 |
 | `gpt-oss-20b` | low / medium / high | 131,072 | — | — | 文本 | 开源 20B 模型 |
-| `gpt-image-2` | — | — | — | — | 图像 | 图像生成工具后端（通过 `image_generation` 调用） |
+| `gpt-image-1.5` | — | — | — | — | 图像 | Codex 原生 Images API |
+| `gpt-image-2` | — | — | — | — | 图像 | Codex 原生 Images API；不可用时回退到 `image_generation` 工具 |
 
-> **后缀**：任意 chat 模型名后追加 `-fast` 启用 Fast 模式，`-high`/`-low` 切换推理等级。例如：`gpt-5.4-fast`、`gpt-5.4-high-fast`。图像模型（`gpt-image-2`）不支持后缀。
+> **后缀**：任意 chat 模型名后追加 `-fast` 启用 Fast 模式，`-high`/`-low` 切换推理等级。例如：`gpt-5.4-fast`、`gpt-5.4-high-fast`。图像模型不支持后缀。
 >
 > **Plan Routing**：不同 plan（free/plus/team/business）的账号自动路由到各自支持的模型，模型可用性以登录账号对应的 Codex 后端返回为准，不要按旧的 Plus-only 表理解。模型列表由后端动态获取，自动同步；只要模型出现在 Dashboard / `/v1/models/catalog` 中，就可以作为请求里的 `model` 使用。
 >
@@ -227,9 +228,9 @@ curl http://localhost:8080/v1/chat/completions \
 
 ### 🖼️ 图像生成
 
-标准 OpenAI 客户端可直接调用 `/v1/images/generations`，并将模型设为 `gpt-image-2`；代理会在内部转换为 Codex 的 `image_generation` 工具调用。原生 `/v1/responses` 调用方式也继续支持。
+标准 OpenAI 客户端可直接调用 `/v1/images/generations`，模型可设为 `gpt-image-1.5` 或 `gpt-image-2`。代理优先直连 Codex 原生 `/images/*` 上游；若上游尚未开放 `gpt-image-2` 直连接口，会自动回退到 Responses `image_generation` 工具。原生 `/v1/responses` 调用方式也继续支持。
 
-> `/v1/models` 是所有能力的模型目录，不代表每个模型都支持聊天接口。`gpt-image-2` 仅支持 `/v1/images/generations` 与 `/v1/images/edits`；发送到 `/v1/chat/completions` 会返回 `unsupported_endpoint`。
+> `/v1/models` 是所有能力的模型目录，不代表每个模型都支持聊天接口。图片模型仅支持 `/v1/images/generations` 与 `/v1/images/edits`；发送到 `/v1/chat/completions` 会返回 `unsupported_endpoint`。
 
 **前提**：ChatGPT **Plus 及以上** 账号（free 账号上游会静默剥掉工具，模型会降级用 SVG 文本假装画图）。
 
@@ -245,11 +246,11 @@ curl http://localhost:8080/v1/images/generations \
   }'
 ```
 
-常用参数：`size`（1024×1024 / 1024×1536 / 1536×1024 / 2048×2048 / 2048×3072 / 3072×2048 / 3840×2160（4K UHD）/ `auto`，最长边 ≤ 3840 px，像素预算约 8 MP）、`output_format`（`png` / `jpeg` / `webp`）、`output_compression`（jpeg / webp 可调）、`background`（`auto` / `opaque`）、`moderation`（`auto` / `low`）、`partial_images`（0–3）。一次只能出 1 张图（`n` 固定为 1）；`model` 字段不管传什么都会被上游改写回 `gpt-image-2`。详见 [API.md](./API.md#image_generation-tool)。
+常用参数：`size`、`output_format`（`png` / `jpeg` / `webp`）、`output_compression`、`background`、`moderation`、`partial_images` 和 `n`。直连 Images API 会原样传递这些参数，并支持多图；只有 `gpt-image-2` 的工具回退路径限制 `n=1`。详见 [API.md](./API.md#post-v1imagesgenerations)。
 
 事件流里 `image_generation_call` item 的 `result` 字段即 base64 编码的图像；`revised_prompt` 是上游改写后的最终提示词。
 
-**编辑模式**：使用标准 `/v1/images/edits` multipart 接口上传参考图：`curl -F "model=gpt-image-2" -F "prompt=把天空改成黄昏" -F "image=@source.png" http://localhost:8080/v1/images/edits`。也可以继续在原生 Responses 请求的 user `content` 中加入 `{"type":"input_image","image_url":"data:image/png;base64,..."}`。
+**编辑模式**：使用标准 `/v1/images/edits` multipart 接口上传参考图：`curl -F "model=gpt-image-2" -F "prompt=把天空改成黄昏" -F "image=@source.png" http://localhost:8080/v1/images/edits`。直连模式支持 `mask`；工具回退不支持 mask。也可以继续在原生 Responses 请求的 user `content` 中加入 `{"type":"input_image","image_url":"data:image/png;base64,..."}`。
 
 > `/v1/chat/completions` 兼容路径会接受 `image_generation` 工具，避免 OpenAI 客户端因 schema 失败；但图像 payload 只有 `/v1/responses` 会稳定透出 `image_generation_call.result`。需要拿到图片字节时请使用 `/v1/responses`。
 
@@ -742,7 +743,7 @@ curl -N http://localhost:8080/official-agent/threads/{threadId}/turns \
 | 端点 | 方法 | 说明 |
 |------|------|------|
 | `/v1/chat/completions` | POST | OpenAI 格式聊天补全 |
-| `/v1/images/generations` | POST | OpenAI 格式图片生成（`gpt-image-2`） |
+| `/v1/images/generations` | POST | OpenAI 格式图片生成（`gpt-image-1.5` / `gpt-image-2`） |
 | `/v1/images/edits` | POST | OpenAI 格式参考图编辑 |
 | `/v1/responses` | POST | Codex Responses API 直通 |
 | `/v1/responses/compact` | POST | Codex compact 响应代理 |

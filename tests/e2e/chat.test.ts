@@ -395,13 +395,18 @@ describe("E2E: POST /v1/chat/completions", () => {
 
   // ── Image generation ──────────────────────────────────────────
 
-  it.each([false, true])("rejects image-only models on Chat Completions (stream=%s)", async (stream) => {
-    const res = await chatRequest(defaultBody({ model: "gpt-image-2", stream }));
+  it.each([
+    { model: "gpt-image-1.5", stream: false },
+    { model: "gpt-image-1.5", stream: true },
+    { model: "gpt-image-2", stream: false },
+    { model: "gpt-image-2", stream: true },
+  ])("rejects $model on Chat Completions (stream=$stream)", async ({ model, stream }) => {
+    const res = await chatRequest(defaultBody({ model, stream }));
 
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({
       error: {
-        message: "Model 'gpt-image-2' is image-only and is not supported on /v1/chat/completions. Use /v1/images/generations or /v1/images/edits instead.",
+        message: `Model '${model}' is image-only and is not supported on /v1/chat/completions. Use /v1/images/generations or /v1/images/edits instead.`,
         type: "invalid_request_error",
         param: "model",
         code: "unsupported_endpoint",

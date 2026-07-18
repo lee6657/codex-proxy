@@ -13,15 +13,15 @@ import {
 import { triggerImmediateRefresh } from "../models/model-fetcher.js";
 import { getConfig } from "../config.js";
 import type { ApiKeyPool } from "../auth/api-key-pool.js";
-import { DEFAULT_IMAGE_MODEL_ID } from "../models/image-models.js";
+import { BUILTIN_IMAGE_MODEL_IDS, DEFAULT_IMAGE_MODEL_ID } from "../models/image-models.js";
 
 // --- Routes ---
 
 /** Stable timestamp used for all model `created` fields (2023-11-14T22:13:20Z). */
 const MODEL_CREATED_TIMESTAMP = 1700000000;
-const IMAGE_MODEL_INFO: CodexModelInfo = {
-  id: DEFAULT_IMAGE_MODEL_ID,
-  displayName: "GPT Image 2",
+const IMAGE_MODEL_INFOS: CodexModelInfo[] = BUILTIN_IMAGE_MODEL_IDS.map((id) => ({
+  id,
+  displayName: id === DEFAULT_IMAGE_MODEL_ID ? "GPT Image 2" : "GPT Image 1.5",
   description: "Image generation model exposed through the OpenAI Images API compatibility route.",
   isDefault: false,
   supportedReasoningEfforts: [],
@@ -31,7 +31,7 @@ const IMAGE_MODEL_INFO: CodexModelInfo = {
   supportsPersonality: false,
   upgrade: null,
   source: "custom",
-};
+}));
 const DEFAULT_EFFECTIVE_CONTEXT_WINDOW_PERCENT = 95;
 const AUTO_COMPACT_CONTEXT_WINDOW_PERCENT = 80;
 const AUTO_COMPACT_TOKEN_LIMIT_OVERRIDES: Record<string, number> = {
@@ -102,8 +102,10 @@ export function createModelRoutes(apiKeyPool?: ApiKeyPool): Hono {
     // The upstream catalog is intentionally empty until an authenticated
     // account has completed its first refresh. Do not advertise only the
     // image model during that window: clients interpret it as the sole model.
-    if (modelsById.size > 0 && !modelsById.has(DEFAULT_IMAGE_MODEL_ID)) {
-      modelsById.set(DEFAULT_IMAGE_MODEL_ID, toRuntimeOpenAIModel(DEFAULT_IMAGE_MODEL_ID));
+    if (modelsById.size > 0) {
+      for (const modelId of BUILTIN_IMAGE_MODEL_IDS) {
+        if (!modelsById.has(modelId)) modelsById.set(modelId, toRuntimeOpenAIModel(modelId));
+      }
     }
 
     const response: OpenAIModelList = { object: "list", data: [...modelsById.values()] };
@@ -116,8 +118,10 @@ export function createModelRoutes(apiKeyPool?: ApiKeyPool): Hono {
     // Default outputModalities to ["text"] for chat-family entries that don't
     // set it explicitly, matching the interface's documented default.
     const catalog = getModelCatalog();
-    if (catalog.length > 0 && !catalog.some((model) => model.id === DEFAULT_IMAGE_MODEL_ID)) {
-      catalog.push(IMAGE_MODEL_INFO);
+    if (catalog.length > 0) {
+      for (const imageModel of IMAGE_MODEL_INFOS) {
+        if (!catalog.some((model) => model.id === imageModel.id)) catalog.push(imageModel);
+      }
     }
     return c.json(
       catalog.map((m) => ({
@@ -131,8 +135,8 @@ export function createModelRoutes(apiKeyPool?: ApiKeyPool): Hono {
     const modelId = c.req.param("modelId");
     const catalog = getModelCatalog();
 
-    if (modelId === DEFAULT_IMAGE_MODEL_ID) {
-      return c.json(toRuntimeOpenAIModel(DEFAULT_IMAGE_MODEL_ID));
+    if (BUILTIN_IMAGE_MODEL_IDS.some((id) => id === modelId)) {
+      return c.json(toRuntimeOpenAIModel(modelId));
     }
 
     const info = catalog.find((m) => m.id === modelId);
@@ -156,7 +160,8 @@ export function createModelRoutes(apiKeyPool?: ApiKeyPool): Hono {
   // Extended endpoint: model details with reasoning efforts
   app.get("/v1/models/:modelId/info", (c) => {
     const modelId = c.req.param("modelId");
-    if (modelId === DEFAULT_IMAGE_MODEL_ID) return c.json(IMAGE_MODEL_INFO);
+    const imageInfo = IMAGE_MODEL_INFOS.find((model) => model.id === modelId);
+    if (imageInfo) return c.json(imageInfo);
     const info = getModelInfo(modelId);
     if (!info) {
       c.status(404);

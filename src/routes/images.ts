@@ -3,6 +3,9 @@
 import { Hono } from "hono";
 import { isRecord } from "../translation/shared-utils.js";
 import { DEFAULT_IMAGE_MODEL_ID, isImageOnlyModel } from "../models/image-models.js";
+import type { AccountPool } from "../auth/account-pool.js";
+import { apiKeyAuth } from "../middleware/api-key-auth.js";
+import type { DirectImagesFetch, ImageEndpoint } from "./images-direct.js";
 
 const IMAGE_HOST_MODEL = "gpt-5.4-mini";
 const IMAGE_TOOL_FIELDS = [
@@ -21,6 +24,11 @@ interface ImageRequest {
   images?: Array<{ image_url?: string }>;
   mask?: { image_url?: string };
   [key: string]: unknown;
+}
+
+export interface ImagesRouteOptions {
+  accountPool?: AccountPool;
+  directImagesFetch?: DirectImagesFetch;
 }
 
 function openAIError(message: string, param: string | null, code: string) {
@@ -161,17 +169,49 @@ async function requestImages(
   body: ImageRequest,
   images: string[],
   prefix: string,
+  endpoint: ImageEndpoint,
+  directImagesFetch?: DirectImagesFetch,
 ): Promise<Response> {
   const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
   if (!prompt) return c.json(openAIError("Invalid request: prompt is required", "prompt", "missing_required_parameter"), 400);
-  if (body.model !== undefined && !isImageOnlyModel(body.model)) {
+  const model = typeof body.model === "string" && body.model.trim() ? body.model.trim() : DEFAULT_IMAGE_MODEL_ID;
+  if (!isImageOnlyModel(model)) {
     return c.json(openAIError(`Model '${body.model}' is not supported by this endpoint; use '${DEFAULT_IMAGE_MODEL_ID}'`, "model", "model_not_found"), 400);
   }
-  if (body.n !== undefined && body.n !== 1) return c.json(openAIError("Only n=1 is supported", "n", "unsupported_parameter"), 400);
   const responseFormat = parseResponseFormat(body.response_format);
   if (!responseFormat) return c.json(openAIError("response_format must be 'b64_json' or 'url'", "response_format", "invalid_value"), 400);
 
   const wantsStream = body.stream === true;
+  if (directImagesFetch) {
+    const directBody: Record<string, unknown> = {
+      ...body,
+      model,
+      prompt,
+    };
+    if (wantsStream) directBody.stream = true;
+    else delete directBody.stream;
+    if (endpoint === "edits") {
+      directBody.images = images.map((image_url) => ({ image_url }));
+    }
+
+    const directResponse = await directImagesFetch(endpoint, directBody, c.req.raw.signal);
+    const canUseToolFallback = model.toLowerCase() === DEFAULT_IMAGE_MODEL_ID
+      && (directResponse.status === 404 || directResponse.status === 405);
+    if (!canUseToolFallback) return directResponse;
+
+    await directResponse.body?.cancel();
+  }
+
+  if (model.toLowerCase() !== DEFAULT_IMAGE_MODEL_ID) {
+    return c.json(openAIError(
+      `Model '${model}' requires the direct Codex Images API, which is unavailable`,
+      "model",
+      "unsupported_endpoint",
+    ), 501);
+  }
+  if (body.n !== undefined && body.n !== 1) return c.json(openAIError("Only n=1 is supported by the image tool fallback", "n", "unsupported_parameter"), 400);
+  if (body.mask?.image_url) return c.json(openAIError("mask is not supported by the image tool fallback", "mask", "unsupported_parameter"), 400);
+
   const upstream = await responsesFetch(new Request("http://internal/v1/responses", {
     method: "POST",
     headers: makeHeaders(c.req.raw),
@@ -190,15 +230,19 @@ async function requestImages(
   return c.json(imagesResponse);
 }
 
-export function createImagesRoutes(responsesFetch: ResponsesFetch): Hono {
+export function createImagesRoutes(responsesFetch: ResponsesFetch, options: ImagesRouteOptions = {}): Hono {
   const app = new Hono();
+
+  if (options.accountPool) {
+    app.use("/v1/images/*", apiKeyAuth(options.accountPool));
+  }
 
   app.post("/v1/images/generations", async (c) => {
     let body: ImageRequest;
     try { body = await c.req.json<ImageRequest>(); } catch {
       return c.json(openAIError("Invalid request: body must be valid JSON", null, "invalid_json"), 400);
     }
-    return requestImages(c, responsesFetch, body, [], "image_generation");
+    return requestImages(c, responsesFetch, body, [], "image_generation", "generations", options.directImagesFetch);
   });
 
   app.post("/v1/images/edits", async (c) => {
@@ -212,8 +256,7 @@ export function createImagesRoutes(responsesFetch: ResponsesFetch): Hono {
         ? body.images.flatMap((item) => typeof item?.image_url === "string" ? [item.image_url] : [])
         : [];
       if (images.length === 0) return c.json(openAIError("images[].image_url is required", "images", "missing_required_parameter"), 400);
-      if (body.mask?.image_url) return c.json(openAIError("mask is not supported by the Codex image_generation backend", "mask", "unsupported_parameter"), 400);
-      return requestImages(c, responsesFetch, body, images, "image_edit");
+      return requestImages(c, responsesFetch, body, images, "image_edit", "edits", options.directImagesFetch);
     }
     if (!contentType.startsWith("multipart/form-data")) {
       return c.json(openAIError("Content-Type must be multipart/form-data or application/json", null, "invalid_request_error"), 400);
@@ -224,14 +267,24 @@ export function createImagesRoutes(responsesFetch: ResponsesFetch): Hono {
     }
     const files = [...form.getAll("image[]"), ...form.getAll("image")].filter((value): value is File => typeof value !== "string");
     if (files.length === 0) return c.json(openAIError("image is required", "image", "missing_required_parameter"), 400);
-    if (form.get("mask") !== null) return c.json(openAIError("mask is not supported by the Codex image_generation backend", "mask", "unsupported_parameter"), 400);
     const body: ImageRequest = {};
     for (const [key, value] of form.entries()) if (typeof value === "string") {
       if (key === "stream") body.stream = value === "true" || value === "1";
       else if (key === "n" || key === "output_compression" || key === "partial_images") body[key] = Number(value);
+      else if (key === "mask[image_url]") body.mask = { image_url: value };
       else body[key] = value;
     }
-    return requestImages(c, responsesFetch, body, await Promise.all(files.map(fileToDataUrl)), "image_edit");
+    const mask = form.get("mask");
+    if (mask instanceof File) body.mask = { image_url: await fileToDataUrl(mask) };
+    return requestImages(
+      c,
+      responsesFetch,
+      body,
+      await Promise.all(files.map(fileToDataUrl)),
+      "image_edit",
+      "edits",
+      options.directImagesFetch,
+    );
   });
 
   return app;

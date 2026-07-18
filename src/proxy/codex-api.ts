@@ -454,6 +454,55 @@ export class CodexApi {
   }
 
   /**
+   * Call the Codex-native OpenAI Images endpoints directly. These endpoints
+   * return OpenAI Images JSON/SSE already, so no Responses translation is
+   * required here.
+   */
+  async createImageResponse(
+    endpoint: "generations" | "edits",
+    request: Record<string, unknown>,
+    signal?: AbortSignal,
+  ): Promise<Response> {
+    const transport = this.resolveTransport();
+    const baseUrl = this.resolveBaseUrl();
+    const url = `${baseUrl}/codex/images/${endpoint}`;
+    const stream = request.stream === true;
+
+    const headers = this.applyHeaders(
+      buildHeadersWithContentType(this.token, this.accountId),
+    );
+    headers["Accept"] = stream ? "text/event-stream" : "application/json";
+    headers["x-client-request-id"] = crypto.randomUUID();
+    headers["x-codex-installation-id"] = getInstallationId();
+
+    let transportRes;
+    try {
+      transportRes = await transport.post(
+        url,
+        headers,
+        JSON.stringify(request),
+        signal,
+        undefined,
+        this.proxyUrl,
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new CodexApiError(0, message);
+    }
+
+    this.captureCookies(transportRes.setCookieHeaders);
+    if (transportRes.status < 200 || transportRes.status >= 300) {
+      const errorBody = await new Response(transportRes.body).text();
+      throw new CodexApiError(transportRes.status, errorBody, transportRes.headers);
+    }
+
+    return new Response(transportRes.body, {
+      status: transportRes.status,
+      headers: transportRes.headers,
+    });
+  }
+
+  /**
    * Compact conversation history (non-streaming JSON).
    * POST /codex/responses/compact → { output: ResponseItem[] }.
    * codex-rs uses this for server-side context compaction (session.execute, not stream).

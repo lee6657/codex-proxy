@@ -188,9 +188,10 @@ If you see streaming AI text, the setup is working. If you get 401, double-check
 | `gpt-5-codex-mini` | medium / high | — | — | — | text | Lightweight Codex / CLI coding model |
 | `gpt-oss-120b` | low / medium / high | 131,072 | — | — | text | Open-source 120B model |
 | `gpt-oss-20b` | low / medium / high | 131,072 | — | — | text | Open-source 20B model |
-| `gpt-image-2` | — | — | — | — | image | Image-generation tool backend, invoked via `image_generation` |
+| `gpt-image-1.5` | — | — | — | — | image | Native Codex Images API |
+| `gpt-image-2` | — | — | — | — | image | Native Codex Images API with `image_generation` tool fallback |
 
-> **Suffixes**: Append `-fast` to any chat model for Fast mode, `-high`/`-low` for reasoning effort. E.g. `gpt-5.4-fast`, `gpt-5.4-high-fast`. The image model (`gpt-image-2`) does not take suffixes.
+> **Suffixes**: Append `-fast` to any chat model for Fast mode, `-high`/`-low` for reasoning effort. E.g. `gpt-5.4-fast`, `gpt-5.4-high-fast`. Image models do not take suffixes.
 >
 > **Plan Routing**: Accounts on different plans auto-route to the models returned for that account by the Codex backend. Do not treat old Plus-only notes as fixed model access rules. Models are dynamically fetched and auto-synced; if a model appears in the Dashboard or `/v1/models/catalog`, it can be used as the request `model`.
 >
@@ -200,9 +201,9 @@ If you see streaming AI text, the setup is working. If you get 401, double-check
 
 ### 🖼️ Image Generation
 
-Standard OpenAI clients can call `/v1/images/generations` directly with `gpt-image-2`; the proxy translates that request to Codex's built-in `image_generation` tool. The native `/v1/responses` form remains supported.
+Standard OpenAI clients can call `/v1/images/generations` directly with `gpt-image-1.5` or `gpt-image-2`. The proxy first calls the native Codex `/images/*` upstream. If the native `gpt-image-2` route is unavailable, it falls back to the Responses `image_generation` tool. The native `/v1/responses` form remains supported.
 
-> `/v1/models` is a capability-wide catalog; it does not imply every model supports chat. `gpt-image-2` is only supported by `/v1/images/generations` and `/v1/images/edits`. Sending it to `/v1/chat/completions` returns `unsupported_endpoint`.
+> `/v1/models` is a capability-wide catalog; it does not imply every model supports chat. Image-only models are supported by `/v1/images/generations` and `/v1/images/edits`, not `/v1/chat/completions`.
 
 **Prerequisite**: a **ChatGPT Plus or higher** account (free accounts have the tool silently stripped by upstream, and the model falls back to replying with an SVG snippet).
 
@@ -218,11 +219,11 @@ curl http://localhost:8080/v1/images/generations \
   }'
 ```
 
-Tunable fields: `size` (1024×1024 / 1024×1536 / 1536×1024 / 2048×2048 / 2048×3072 / 3072×2048 / 3840×2160 (4K UHD) / `auto`; longest edge ≤ 3840 px, pixel budget ≈ 8 MP), `output_format` (`png` / `jpeg` / `webp`), `output_compression` (jpeg / webp only), `background` (`auto` / `opaque`), `moderation` (`auto` / `low`), `partial_images` (0–3). Upstream forces `model = gpt-image-2` and rejects `n`, `input_image`, `mask`, `input_fidelity`, `style`, `response_format`. See [API.md](./API.md#image_generation-tool) for the full matrix.
+The direct Images path forwards standard fields such as `size`, `output_format`, `output_compression`, `background`, `moderation`, `partial_images`, and `n`. Multiple images are supported when upstream accepts `n`; only the `gpt-image-2` tool fallback requires `n=1`. See [API.md](./API.md#post-v1imagesgenerations).
 
 In the stream, the `image_generation_call` item's `result` field is a base64-encoded image; `revised_prompt` contains the final prompt used by the model.
 
-**Edit mode**: use the standard multipart `/v1/images/edits` route: `curl -F "model=gpt-image-2" -F "prompt=Change the sky to sunset" -F "image=@source.png" http://localhost:8080/v1/images/edits`. The native Responses request can still include `{"type":"input_image","image_url":"data:image/png;base64,..."}` in user message content.
+**Edit mode**: use the standard multipart `/v1/images/edits` route: `curl -F "model=gpt-image-2" -F "prompt=Change the sky to sunset" -F "image=@source.png" http://localhost:8080/v1/images/edits`. Direct mode supports masks; the tool fallback does not. The native Responses request can still include `{"type":"input_image","image_url":"data:image/png;base64,..."}` in user message content.
 
 > The `/v1/chat/completions` compatibility path accepts the `image_generation` tool so OpenAI clients do not fail schema validation, but image payloads are only exposed reliably through `/v1/responses` as `image_generation_call.result`. Use `/v1/responses` when you need the image bytes.
 
@@ -603,7 +604,7 @@ On first startup, if `data/local.yaml` is missing, Codex Proxy creates it with `
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/v1/chat/completions` | POST | OpenAI format chat completions |
-| `/v1/images/generations` | POST | OpenAI image generation (`gpt-image-2`) |
+| `/v1/images/generations` | POST | OpenAI image generation (`gpt-image-1.5` / `gpt-image-2`) |
 | `/v1/images/edits` | POST | OpenAI reference-image editing |
 | `/v1/responses` | POST | Codex Responses API passthrough |
 | `/v1/responses/compact` | POST | Codex compact response proxy |
