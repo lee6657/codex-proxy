@@ -332,6 +332,7 @@ describe("GET /v1/models with runtime API keys", () => {
 
     expect(body.data.some((m: { id: string }) => m.id === "my-runtime-model")).toBe(true);
     expect(body.data.some((m: { id: string }) => m.id === "gpt-5.4")).toBe(true);
+    expect(body.data.some((m: { id: string }) => m.id === "gpt-image-2")).toBe(true);
   });
 
   it("includes Codex token metadata in /v1/models for CLI auto compact", async () => {
@@ -379,6 +380,25 @@ describe("GET /v1/models with runtime API keys", () => {
 
     const backendLimitModel = body.data.find((m) => m.id === "gpt-5.4");
     expect(backendLimitModel?.auto_compact_token_limit).toBe(120_000);
+  });
+
+  it("keeps the image-only model in the loaded capability catalog", async () => {
+    applyBackendModelsForPlan("plus", [{
+      slug: "gpt-5.4",
+      display_name: "GPT-5.4",
+    }]);
+
+    const app = createModelRoutes();
+    const models = await (await app.request("/v1/models")).json() as {
+      data: Array<{ id: string }>;
+    };
+    expect(models.data.some((model) => model.id === "gpt-image-2")).toBe(true);
+
+    const catalog = await (await app.request("/v1/models/catalog")).json() as Array<{
+      id: string;
+      outputModalities?: string[];
+    }>;
+    expect(catalog.find((model) => model.id === "gpt-image-2")?.outputModalities).toEqual(["image"]);
   });
 
   it("preserves catalog metadata when a runtime API key uses the same model id", async () => {

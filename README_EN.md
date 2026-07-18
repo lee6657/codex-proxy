@@ -202,6 +202,8 @@ If you see streaming AI text, the setup is working. If you get 401, double-check
 
 Standard OpenAI clients can call `/v1/images/generations` directly with `gpt-image-2`; the proxy translates that request to Codex's built-in `image_generation` tool. The native `/v1/responses` form remains supported.
 
+> `/v1/models` is a capability-wide catalog; it does not imply every model supports chat. `gpt-image-2` is only supported by `/v1/images/generations` and `/v1/images/edits`. Sending it to `/v1/chat/completions` returns `unsupported_endpoint`.
+
 **Prerequisite**: a **ChatGPT Plus or higher** account (free accounts have the tool silently stripped by upstream, and the model falls back to replying with an SVG snippet).
 
 ```bash

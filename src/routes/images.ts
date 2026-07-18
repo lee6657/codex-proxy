@@ -2,8 +2,8 @@
 
 import { Hono } from "hono";
 import { isRecord } from "../translation/shared-utils.js";
+import { DEFAULT_IMAGE_MODEL_ID, isImageOnlyModel } from "../models/image-models.js";
 
-const IMAGE_MODEL = "gpt-image-2";
 const IMAGE_HOST_MODEL = "gpt-5.4-mini";
 const IMAGE_TOOL_FIELDS = [
   "size", "quality", "background", "output_format", "output_compression", "moderation", "partial_images",
@@ -164,8 +164,8 @@ async function requestImages(
 ): Promise<Response> {
   const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
   if (!prompt) return c.json(openAIError("Invalid request: prompt is required", "prompt", "missing_required_parameter"), 400);
-  if (body.model !== undefined && body.model !== IMAGE_MODEL) {
-    return c.json(openAIError(`Model '${body.model}' is not supported by this endpoint`, "model", "model_not_found"), 400);
+  if (body.model !== undefined && !isImageOnlyModel(body.model)) {
+    return c.json(openAIError(`Model '${body.model}' is not supported by this endpoint; use '${DEFAULT_IMAGE_MODEL_ID}'`, "model", "model_not_found"), 400);
   }
   if (body.n !== undefined && body.n !== 1) return c.json(openAIError("Only n=1 is supported", "n", "unsupported_parameter"), 400);
   const responseFormat = parseResponseFormat(body.response_format);

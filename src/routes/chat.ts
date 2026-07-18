@@ -27,6 +27,7 @@ import type { FormatAdapter, ProxyRequest } from "./shared/proxy-handler-types.j
 import type { UpstreamRouter } from "../proxy/upstream-router.js";
 import { summarizeRequestForLog } from "../logs/request-summary.js";
 import { apiKeyAuth } from "../middleware/api-key-auth.js";
+import { isImageOnlyModel } from "../models/image-models.js";
 
 function makeOpenAIFormat(wantReasoning: boolean): FormatAdapter {
   return {
@@ -99,6 +100,17 @@ export function createChatRoutes(
       });
     }
     const req = parsed.data;
+    if (isImageOnlyModel(req.model)) {
+      c.status(400);
+      return c.json({
+        error: {
+          message: `Model '${req.model}' is image-only and is not supported on /v1/chat/completions. Use /v1/images/generations or /v1/images/edits instead.`,
+          type: "invalid_request_error",
+          param: "model",
+          code: "unsupported_endpoint",
+        },
+      });
+    }
     const routeMatch = upstreamRouter?.resolveMatch(req.model) ?? (isRecognizedModelName(req.model)
       ? { kind: "codex" as const }
       : { kind: "not-found" as const });

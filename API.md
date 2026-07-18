@@ -82,6 +82,9 @@ Responses tool. `gpt-image-2` is also exposed by `/v1/models`.
 - `response_format` may be `b64_json` (default) or `url`. The `url` response is
   a self-contained `data:` URL because the proxy does not host generated files.
 - Requires a ChatGPT Plus or higher account.
+- `/v1/models` is a capability-wide catalog. Although `gpt-image-2` appears
+  there, it is image-only and is rejected by `/v1/chat/completions`; use the
+  Images endpoints above instead.
 
 ### POST /v1/images/edits
 

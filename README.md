@@ -229,6 +229,8 @@ curl http://localhost:8080/v1/chat/completions \
 
 标准 OpenAI 客户端可直接调用 `/v1/images/generations`，并将模型设为 `gpt-image-2`；代理会在内部转换为 Codex 的 `image_generation` 工具调用。原生 `/v1/responses` 调用方式也继续支持。
 
+> `/v1/models` 是所有能力的模型目录，不代表每个模型都支持聊天接口。`gpt-image-2` 仅支持 `/v1/images/generations` 与 `/v1/images/edits`；发送到 `/v1/chat/completions` 会返回 `unsupported_endpoint`。
+
 **前提**：ChatGPT **Plus 及以上** 账号（free 账号上游会静默剥掉工具，模型会降级用 SVG 文本假装画图）。
 
 ```bash
