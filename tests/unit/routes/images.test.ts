@@ -170,15 +170,15 @@ describe("POST /v1/images/edits", () => {
 });
 
 describe("gpt-image-2 model discovery", () => {
-  it("appears in both the OpenAI model list and the dashboard catalog", async () => {
+  it("does not appear alone before the upstream model catalog has loaded", async () => {
     const app = createModelRoutes();
     const models = await (await app.request("/v1/models")).json() as { data: Array<{ id: string }> };
-    expect(models.data.some((model) => model.id === "gpt-image-2")).toBe(true);
+    expect(models.data).toEqual([]);
 
     const catalog = await (await app.request("/v1/models/catalog")).json() as Array<{
       id: string;
       outputModalities?: string[];
     }>;
-    expect(catalog.find((model) => model.id === "gpt-image-2")?.outputModalities).toEqual(["image"]);
+    expect(catalog.find((model) => model.id === "gpt-image-2")).toBeUndefined();
   });
 });

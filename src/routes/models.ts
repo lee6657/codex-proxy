@@ -99,7 +99,10 @@ export function createModelRoutes(apiKeyPool?: ApiKeyPool): Hono {
         modelsById.set(modelId, toRuntimeOpenAIModel(modelId));
       }
     }
-    if (!modelsById.has(IMAGE_MODEL_ID)) {
+    // The upstream catalog is intentionally empty until an authenticated
+    // account has completed its first refresh. Do not advertise only the
+    // image model during that window: clients interpret it as the sole model.
+    if (modelsById.size > 0 && !modelsById.has(IMAGE_MODEL_ID)) {
       modelsById.set(IMAGE_MODEL_ID, toRuntimeOpenAIModel(IMAGE_MODEL_ID));
     }
 
@@ -113,7 +116,9 @@ export function createModelRoutes(apiKeyPool?: ApiKeyPool): Hono {
     // Default outputModalities to ["text"] for chat-family entries that don't
     // set it explicitly, matching the interface's documented default.
     const catalog = getModelCatalog();
-    if (!catalog.some((model) => model.id === IMAGE_MODEL_ID)) catalog.push(IMAGE_MODEL_INFO);
+    if (catalog.length > 0 && !catalog.some((model) => model.id === IMAGE_MODEL_ID)) {
+      catalog.push(IMAGE_MODEL_INFO);
+    }
     return c.json(
       catalog.map((m) => ({
         ...m,
