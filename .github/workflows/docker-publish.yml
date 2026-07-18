@@ -2,7 +2,7 @@ name: Publish Docker Image
 
 on:
   push:
-    branches: [master]
+    branches: [master, dev]
   workflow_dispatch:
     inputs:
       tag:
@@ -47,23 +47,27 @@ jobs:
 
           SHORT_SHA=$(git rev-parse --short=7 HEAD)
 
-          # Re-tagging `latest` is only safe when we're building the current
-          # master tip. A manual dispatch of an OLD tag (re-publishing a
-          # version image) must not silently move `latest` backwards.
-          PUSH_LATEST=true
+          # master publishes stable `latest`; dev publishes an explicitly
+          # non-stable `dev` tag so fork development can be deployed without
+          # moving the stable image backwards.
+          CHANNEL_TAG=latest
+          if [ "${GITHUB_REF_NAME}" = "dev" ]; then
+            CHANNEL_TAG=dev
+          fi
+          PUSH_CHANNEL=true
           if [ -n "$TAG_INPUT" ]; then
             git fetch origin master --depth=1 >/dev/null 2>&1 || true
             MASTER_SHA=$(git rev-parse FETCH_HEAD 2>/dev/null || echo "")
             if [ "$(git rev-parse HEAD)" != "$MASTER_SHA" ]; then
-              echo "tag $TAG_INPUT is not the master tip, skipping latest"
-              PUSH_LATEST=false
+              echo "tag $TAG_INPUT is not the master tip, skipping ${CHANNEL_TAG}"
+              PUSH_CHANNEL=false
             fi
           fi
 
           {
             echo "tags<<EOF"
-            if [ "$PUSH_LATEST" = "true" ]; then
-              echo "type=raw,value=latest"
+            if [ "$PUSH_CHANNEL" = "true" ]; then
+              echo "type=raw,value=${CHANNEL_TAG}"
             fi
             echo "type=raw,value=sha-${SHORT_SHA}"
             if [ -n "$TAG_INPUT" ]; then
