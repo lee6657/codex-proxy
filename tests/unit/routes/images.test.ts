@@ -57,6 +57,27 @@ describe("POST /v1/images/generations", () => {
     expect(responsesFetch).toHaveBeenCalledOnce();
   });
 
+  it("falls back for image-2 when the account group lacks native Images permission", async () => {
+    const responsesFetch = vi.fn(async () => imageResponse());
+    const directImagesFetch = vi.fn(async () => new Response(JSON.stringify({
+      error: {
+        message: "Image generation is not enabled for this group",
+        type: "permission_error",
+      },
+    }), { status: 403, headers: { "Content-Type": "application/json" } }));
+    const app = createImagesRoutes(responsesFetch, { directImagesFetch });
+
+    const res = await app.request("/v1/images/generations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "gpt-image-2", prompt: "Draw a cat" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(directImagesFetch).toHaveBeenCalledOnce();
+    expect(responsesFetch).toHaveBeenCalledOnce();
+  });
+
   it("translates a standard Images request to the Responses image tool", async () => {
     const responsesFetch = vi.fn(async () => imageResponse());
     const app = createImagesRoutes(responsesFetch);

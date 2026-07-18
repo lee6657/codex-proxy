@@ -5,7 +5,11 @@ import { isRecord } from "../translation/shared-utils.js";
 import { DEFAULT_IMAGE_MODEL_ID, isImageOnlyModel } from "../models/image-models.js";
 import type { AccountPool } from "../auth/account-pool.js";
 import { apiKeyAuth } from "../middleware/api-key-auth.js";
-import type { DirectImagesFetch, ImageEndpoint } from "./images-direct.js";
+import {
+  isImageGroupPermissionError,
+  type DirectImagesFetch,
+  type ImageEndpoint,
+} from "./images-direct.js";
 
 const IMAGE_HOST_MODEL = "gpt-5.4-mini";
 const IMAGE_TOOL_FIELDS = [
@@ -195,8 +199,14 @@ async function requestImages(
     }
 
     const directResponse = await directImagesFetch(endpoint, directBody, c.req.raw.signal);
-    const canUseToolFallback = model.toLowerCase() === DEFAULT_IMAGE_MODEL_ID
-      && (directResponse.status === 404 || directResponse.status === 405);
+    let canUseToolFallback = directResponse.status === 404 || directResponse.status === 405;
+    if (!canUseToolFallback && directResponse.status === 403) {
+      canUseToolFallback = isImageGroupPermissionError(
+        directResponse.status,
+        await directResponse.clone().text(),
+      );
+    }
+    canUseToolFallback = model.toLowerCase() === DEFAULT_IMAGE_MODEL_ID && canUseToolFallback;
     if (!canUseToolFallback) return directResponse;
 
     await directResponse.body?.cancel();

@@ -12,6 +12,12 @@ export type DirectImagesFetch = (
   signal?: AbortSignal,
 ) => Promise<Response>;
 
+const IMAGE_GROUP_DISABLED_MESSAGE = "image generation is not enabled for this group";
+
+export function isImageGroupPermissionError(status: number, body: string): boolean {
+  return status === 403 && body.toLowerCase().includes(IMAGE_GROUP_DISABLED_MESSAGE);
+}
+
 function openAIError(message: string, code: string) {
   return JSON.stringify({
     error: { message, type: "server_error", param: null, code },
@@ -127,7 +133,7 @@ export function createCodexDirectImagesFetch(
         // A missing direct Images route is a capability signal, not a
         // Cloudflare path-block. Return it immediately so image-2 can use the
         // Responses-tool fallback without penalizing or disabling accounts.
-        if (error.status === 404 || error.status === 405) {
+        if (error.status === 404 || error.status === 405 || isImageGroupPermissionError(error.status, error.body)) {
           accountPool.releaseWithoutCounting(acquired.entryId);
           return responseFromCodexError(error);
         }
