@@ -10,6 +10,7 @@
  */
 
 import type { UpstreamAdapter } from "../proxy/upstream-adapter.js";
+import { createHash } from "crypto";
 import type {
   GeminiGenerateContentResponse,
   GeminiUsageMetadata,
@@ -18,6 +19,31 @@ import type {
 import { iterateCodexEvents, EmptyResponseError, type UsageInfo } from "./codex-event-extractor.js";
 import { reconvertTupleValues } from "./tuple-schema.js";
 import { codexApiErrorFromEvent } from "./codex-api-error-from-event.js";
+
+function imageMimeType(outputFormat?: string): string {
+  switch (outputFormat?.toLowerCase()) {
+    case "jpg":
+    case "jpeg":
+      return "image/jpeg";
+    case "webp":
+      return "image/webp";
+    default:
+      return "image/png";
+  }
+}
+
+function imageHash(base64: string): string {
+  return createHash("sha256").update(base64).digest("hex");
+}
+
+function makeGeminiImagePart(base64: string, outputFormat?: string): GeminiPart {
+  return {
+    inlineData: {
+      data: base64,
+      mimeType: imageMimeType(outputFormat),
+    },
+  };
+}
 
 /**
  * Stream Codex Responses API events as Gemini SSE.
@@ -37,6 +63,23 @@ export async function* streamCodexToGemini(
   let cachedTokens: number | undefined;
   let hasContent = false;
   let tupleTextBuffer = tupleSchema ? "" : null;
+  const lastImageHashByItemId = new Map<string, string>();
+
+  const emitImage = (itemId: string, base64: string, outputFormat?: string): string | null => {
+    if (!base64) return null;
+    const dedupeKey = itemId || "__image__";
+    const hash = imageHash(base64);
+    if (lastImageHashByItemId.get(dedupeKey) === hash) return null;
+    lastImageHashByItemId.set(dedupeKey, hash);
+    const chunk: GeminiGenerateContentResponse = {
+      candidates: [{
+        content: { parts: [makeGeminiImagePart(base64, outputFormat)], role: "model" },
+        index: 0,
+      }],
+      modelVersion: model,
+    };
+    return `data: ${JSON.stringify(chunk)}\n\n`;
+  };
 
   for await (const evt of iterateCodexEvents(codexApi, rawResponse)) {
     if (evt.responseId) onResponseId?.(evt.responseId);
@@ -44,6 +87,32 @@ export async function* streamCodexToGemini(
     // Handle upstream error events
     if (evt.error) {
       throw codexApiErrorFromEvent(evt.error);
+    }
+
+    if (evt.imageGenerationPartial) {
+      const chunk = emitImage(
+        evt.imageGenerationPartial.id,
+        evt.imageGenerationPartial.result,
+        evt.imageGenerationPartial.outputFormat,
+      );
+      if (chunk) {
+        hasContent = true;
+        yield chunk;
+      }
+      continue;
+    }
+
+    if (evt.imageGenerationDone) {
+      const chunk = emitImage(
+        evt.imageGenerationDone.id,
+        evt.imageGenerationDone.result,
+        evt.imageGenerationDone.outputFormat,
+      );
+      if (chunk) {
+        hasContent = true;
+        yield chunk;
+      }
+      continue;
     }
 
     // Function call done → emit as a candidate with functionCall part
@@ -193,6 +262,7 @@ export async function collectCodexToGeminiResponse(
   let cachedTokens: number | undefined;
   let responseId: string | null = null;
   const functionCallParts: GeminiPart[] = [];
+  const imageParts: GeminiPart[] = [];
 
   for await (const evt of iterateCodexEvents(codexApi, rawResponse)) {
     if (evt.responseId) responseId = evt.responseId;
@@ -214,6 +284,12 @@ export async function collectCodexToGeminiResponse(
         functionCall: { name: evt.functionCallDone.name, args },
       });
     }
+    if (evt.imageGenerationDone?.result) {
+      imageParts.push(makeGeminiImagePart(
+        evt.imageGenerationDone.result,
+        evt.imageGenerationDone.outputFormat,
+      ));
+    }
   }
 
   const usage: UsageInfo = {
@@ -230,7 +306,7 @@ export async function collectCodexToGeminiResponse(
   };
 
   // Detect empty response (HTTP 200 but no content)
-  if (!fullText && functionCallParts.length === 0 && outputTokens === 0) {
+  if (!fullText && functionCallParts.length === 0 && imageParts.length === 0 && outputTokens === 0) {
     throw new EmptyResponseError(responseId, { input_tokens: inputTokens, output_tokens: outputTokens });
   }
 
@@ -248,6 +324,7 @@ export async function collectCodexToGeminiResponse(
     parts.push({ text: fullText });
   }
   parts.push(...functionCallParts);
+  parts.push(...imageParts);
   if (parts.length === 0) {
     parts.push({ text: "" });
   }

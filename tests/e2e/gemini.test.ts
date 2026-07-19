@@ -14,6 +14,7 @@ import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   setTransportPost,
   resetTransportState,
+  getLastTransportBody,
   getMockTransport,
   makeTransportResponse,
   makeErrorTransportResponse,
@@ -137,6 +138,8 @@ describe("E2E: Gemini endpoints", () => {
     expect(final.candidates![0].finishReason).toBe("STOP");
     expect(final.usageMetadata).toBeDefined();
     expect(final.usageMetadata!.totalTokenCount).toBe(15);
+    const sentBody = JSON.parse(getLastTransportBody()!);
+    expect(sentBody.tools).toEqual([{ type: "image_generation", output_format: "png" }]);
   });
 
   // ── Non-streaming format ───────────────────────────────────────

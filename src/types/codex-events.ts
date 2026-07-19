@@ -129,9 +129,18 @@ export interface CodexOutputItemDoneEvent {
     content?: unknown[];
     actions?: unknown[];
     result?: string;
+    output_format?: string;
     revised_prompt?: string;
     [key: string]: unknown;
   };
+}
+
+export interface CodexImageGenerationPartialImageEvent {
+  type: "response.image_generation_call.partial_image";
+  itemId: string;
+  partialImageB64: string;
+  partialImageIndex: number;
+  outputFormat?: string;
 }
 
 export interface CodexOutputTextAnnotationAddedEvent {
@@ -189,6 +198,7 @@ export type TypedCodexEvent =
   | CodexCompletedEvent
   | CodexOutputItemAddedEvent
   | CodexOutputItemDoneEvent
+  | CodexImageGenerationPartialImageEvent
   | CodexOutputTextAnnotationAddedEvent
   | CodexWebSearchCallEvent
   | CodexContentPartAddedEvent
@@ -411,6 +421,18 @@ export function parseCodexEvent(evt: CodexSSEEvent): TypedCodexEvent {
       }
       return { type: "unknown", raw: data };
     }
+    case "response.image_generation_call.partial_image": {
+      if (isRecord(data) && typeof data.partial_image_b64 === "string") {
+        return {
+          type: "response.image_generation_call.partial_image",
+          itemId: typeof data.item_id === "string" ? data.item_id : "",
+          partialImageB64: data.partial_image_b64,
+          partialImageIndex: typeof data.partial_image_index === "number" ? data.partial_image_index : 0,
+          ...(typeof data.output_format === "string" ? { outputFormat: data.output_format } : {}),
+        };
+      }
+      return { type: "unknown", raw: data };
+    }
     case "response.content_part.added":
     case "response.content_part.done": {
       if (isRecord(data) && isRecord(data.part)) {
@@ -493,6 +515,7 @@ export function parseCodexEvent(evt: CodexSSEEvent): TypedCodexEvent {
             ...(Array.isArray(data.item.content) ? { content: data.item.content } : {}),
             ...(Array.isArray(data.item.actions) ? { actions: data.item.actions } : {}),
             ...(typeof data.item.result === "string" ? { result: data.item.result } : {}),
+            ...(typeof data.item.output_format === "string" ? { output_format: data.item.output_format } : {}),
             ...(typeof data.item.revised_prompt === "string" ? { revised_prompt: data.item.revised_prompt } : {}),
           },
         };

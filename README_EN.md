@@ -205,6 +205,8 @@ Standard OpenAI clients can call `/v1/images/generations` directly with `gpt-ima
 
 > `/v1/models` is a capability-wide catalog; it does not imply every model supports chat. Image-only models are supported by `/v1/images/generations` and `/v1/images/edits`, not `/v1/chat/completions`.
 
+To generate images from a chat prompt, select a **GPT text model** such as `gpt-5.4`. The proxy automatically makes the `image_generation` tool available to Codex text requests, and the model decides whether prompts such as "generate an image" or "edit this image" should invoke it. Do not select `gpt-image-2` on the chat endpoint. OpenAI Chat returns generated images in non-streaming `choices[].message.images[]` or streaming `choices[].delta.images[]`; Gemini returns `inlineData` parts.
+
 **Prerequisite**: a **ChatGPT Plus or higher** account (free accounts have the tool silently stripped by upstream, and the model falls back to replying with an SVG snippet).
 
 ```bash
@@ -223,9 +225,9 @@ The direct Images path forwards standard fields such as `size`, `output_format`,
 
 In the stream, the `image_generation_call` item's `result` field is a base64-encoded image; `revised_prompt` contains the final prompt used by the model.
 
-**Edit mode**: use the standard multipart `/v1/images/edits` route: `curl -F "model=gpt-image-2" -F "prompt=Change the sky to sunset" -F "image=@source.png" http://localhost:8080/v1/images/edits`. Direct mode supports masks; the tool fallback does not. The native Responses request can still include `{"type":"input_image","image_url":"data:image/png;base64,..."}` in user message content.
+**Edit mode**: use the standard multipart `/v1/images/edits` route: `curl -F "model=gpt-image-2" -F "prompt=Change the sky to sunset" -F "image=@source.png" http://localhost:8080/v1/images/edits`. Direct mode supports masks; the tool fallback does not. Chat clients can also send a reference image as `image_url` together with an edit instruction to a GPT text model. Native Responses requests use `{"type":"input_image","image_url":"data:image/png;base64,..."}` in user message content.
 
-> The `/v1/chat/completions` compatibility path accepts the `image_generation` tool so OpenAI clients do not fail schema validation, but image payloads are only exposed reliably through `/v1/responses` as `image_generation_call.result`. Use `/v1/responses` when you need the image bytes.
+To disable automatic tool injection, set `model: { auto_image_generation: false }` in `data/local.yaml`. Explicit image tools and `/v1/images/*` remain enabled.
 
 ## 🔗 Client Setup
 
@@ -473,7 +475,7 @@ server:
 | `server` | `host`, `port`, `proxy_api_key` | Listen address and API key |
 | `api` | `base_url`, `timeout_seconds` | Upstream API URL and timeout |
 | `client` | `app_version`, `build_number`, `chromium_version` | Codex Desktop version to impersonate |
-| `model` | `default`, `default_reasoning_effort`, `default_service_tier`, `aliases`, `custom_models`, `inject_desktop_context` | Default model, reasoning config, aliases, and custom catalog entries |
+| `model` | `default`, `default_reasoning_effort`, `default_service_tier`, `aliases`, `custom_models`, `auto_image_generation`, `inject_desktop_context` | Default model, reasoning config, automatic image tool, aliases, and custom catalog entries |
 | `auth` | `rotation_strategy`, `rate_limit_backoff_seconds` | Rotation strategy and rate limit backoff |
 | `tls` | `proxy_url`, `force_http11` | TLS proxy and HTTP version |
 | `quota` | `refresh_interval_minutes`, `warning_thresholds`, `skip_exhausted` | Usage snapshots, threshold config, exhausted-account skipping |

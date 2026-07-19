@@ -118,10 +118,18 @@ Native Codex Responses API passthrough (WebSocket transport).
 
 #### image_generation tool
 
-Declare `{"type": "image_generation", ...}` in `tools[]` to let the model invoke
-the server-side image generation backend (`gpt-image-2`). Requires a **ChatGPT
-Plus or higher** account — free plans have the tool silently stripped upstream
-and the model falls back to returning SVG text.
+The proxy automatically appends `{"type":"image_generation","output_format":"png"}`
+to Codex-backed OpenAI Chat, Responses, and Gemini text-model requests. Clients
+can still declare `{"type":"image_generation", ...}` in `tools[]` to override
+its parameters. The text model decides whether to invoke the tool; the actual
+generation backend is `gpt-image-2`. This requires a **ChatGPT Plus or higher**
+account. Automatic injection is skipped for free plans.
+
+`model.auto_image_generation` defaults to `true`. Setting it to `false` only
+disables automatic injection; explicit tools and `/v1/images/generations` or
+`/v1/images/edits` remain available.
+Automatic injection is also skipped for free accounts, Responses Lite,
+`*-spark` models, Anthropic Messages, and third-party/custom upstreams.
 
 **Supported fields** (all optional except `type`):
 
@@ -188,10 +196,12 @@ Legal content-part types (from upstream enum validation): `input_text`,
 `input_image`, `output_text`, `refusal`, `input_file`, `computer_screenshot`,
 `summary_text`.
 
-OpenAI Chat compatibility accepts `tools: [{"type":"image_generation"}]`, but
-the stable image payload is exposed by `/v1/responses` as
-`image_generation_call.result`. Use `/v1/responses` for clients that need the
-base64 image bytes.
+OpenAI Chat returns images in `choices[].message.images[]` for non-streaming
+responses and `choices[].delta.images[]` for streaming responses. Each item is
+`{"type":"image_url","index":0,"image_url":{"url":"data:image/png;base64,..."}}`;
+images are not represented as function `tool_calls`. Native `/v1/responses`
+continues to expose `image_generation_call.result`, while Gemini returns
+`inlineData` parts.
 
 ### Ollama-Compatible Bridge
 

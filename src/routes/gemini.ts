@@ -147,6 +147,7 @@ export function createGeminiRoutes(
       isStreaming,
       clientConversationId: c.req.header("x-conversation-id") || c.req.header("x-session-id"),
       tupleSchema,
+      autoInjectImageGeneration: getConfig().model.auto_image_generation !== false,
     };
 
     if (routeMatch?.kind === "api-key" || routeMatch?.kind === "adapter") {

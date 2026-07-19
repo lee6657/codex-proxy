@@ -14,6 +14,7 @@ model:
   default_service_tier: null
   aliases: {}
   custom_models: []
+  auto_image_generation: true
   inject_desktop_context: false
   suppress_desktop_directives: false
 auth:

@@ -108,9 +108,14 @@ Codex 原生 `/images/generations`；如果 `gpt-image-2` 的直连接口返回 
 
 #### image_generation 工具
 
-在 `tools[]` 里声明 `{"type": "image_generation", ...}`，模型可以调用服务端图像
-生成后端（`gpt-image-2`）。前提：**ChatGPT Plus 及以上** 账号——free 账号上游
-会静默剥掉工具，模型会改用 SVG 文本假装画图。
+代理默认会为走 Codex 账号的 OpenAI Chat、Responses 和 Gemini 文本模型请求追加
+`{"type":"image_generation","output_format":"png"}`；也可以在 `tools[]` 中显式声明
+`{"type":"image_generation", ...}` 覆盖参数。工具由文本模型自行决定是否调用，实际生成后端为
+`gpt-image-2`。前提：**ChatGPT Plus 及以上** 账号——free 账号不会自动注入该工具。
+
+`model.auto_image_generation` 默认为 `true`。设置为 `false` 只关闭自动注入，不影响客户端显式工具和
+`/v1/images/generations`、`/v1/images/edits`。
+Free 账号、Responses Lite、`*-spark` 模型、Anthropic Messages 以及第三方/自定义上游均不会自动注入。
 
 **支持字段**（除 `type` 全部可选）：
 
@@ -173,9 +178,11 @@ token 混到一起。
 合法 content-part 类型（由上游枚举校验回显）：`input_text`、`input_image`、
 `output_text`、`refusal`、`input_file`、`computer_screenshot`、`summary_text`。
 
-OpenAI Chat 兼容路径会接受 `tools: [{"type":"image_generation"}]`，但稳定的
-图像 payload 只会通过 `/v1/responses` 的 `image_generation_call.result` 暴露。
-需要拿到 base64 图片字节时，请使用 `/v1/responses`。
+OpenAI Chat 非流式响应通过 `choices[].message.images[]` 返回图片，流式响应通过
+`choices[].delta.images[]` 返回局部图和最终图。每项使用
+`{"type":"image_url","index":0,"image_url":{"url":"data:image/png;base64,..."}}`；
+图片不会伪装成函数 `tool_calls`。原生 `/v1/responses` 仍返回 `image_generation_call.result`，
+Gemini 返回 `inlineData`。
 
 ---
 

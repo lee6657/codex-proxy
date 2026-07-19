@@ -288,6 +288,10 @@ describe("E2E: POST /v1/chat/completions", () => {
         strict: false,
         description: "Apply a patch",
       },
+      {
+        type: "image_generation",
+        output_format: "png",
+      },
     ]);
     expect(sentBody.reasoning?.effort).toBe("high");
   });
@@ -415,7 +419,14 @@ describe("E2E: POST /v1/chat/completions", () => {
     expect(getMockTransport().post).not.toHaveBeenCalled();
   });
 
-  it("non-streaming image generation: translates image_generation_call to tool_calls", async () => {
+  it("automatically adds image_generation to Codex text requests", async () => {
+    const res = await chatRequest(defaultBody());
+    expect(res.status).toBe(200);
+    const sentBody = JSON.parse(getLastTransportBody()!);
+    expect(sentBody.tools).toEqual([{ type: "image_generation", output_format: "png" }]);
+  });
+
+  it("non-streaming image generation: returns message.images", async () => {
     setTransportPost(async () =>
       makeTransportResponse(
         buildImageGenStreamChunks("resp_chat_img_ns", "item_img_e2e_1", "fake_b64_data", "red circle"),
@@ -429,21 +440,20 @@ describe("E2E: POST /v1/chat/completions", () => {
 
     const body = await res.json() as Record<string, unknown>;
     const choices = body.choices as Array<{
-      message: { tool_calls?: Array<{ id: string; type: string; function: { name: string; arguments: string } }> };
+      message: { images?: Array<{ type: string; index: number; image_url: { url: string } }>; tool_calls?: unknown };
       finish_reason: string;
     }>;
 
-    expect(choices[0].message.tool_calls).toBeDefined();
-    expect(choices[0].message.tool_calls!.length).toBe(1);
-    const tc = choices[0].message.tool_calls![0];
-    expect(tc.id).toBe("item_img_e2e_1");
-    expect(tc.function.name).toBe("image_generation");
-    const args = JSON.parse(tc.function.arguments);
-    expect(args.result).toBe("fake_b64_data");
-    expect(args.revised_prompt).toBe("red circle");
+    expect(choices[0].message.tool_calls).toBeUndefined();
+    expect(choices[0].message.images).toEqual([{
+      type: "image_url",
+      index: 0,
+      image_url: { url: "data:image/png;base64,fake_b64_data" },
+    }]);
+    expect(choices[0].finish_reason).toBe("stop");
   });
 
-  it("streaming image generation: translates image_generation_call to tool_calls", async () => {
+  it("streaming image generation: returns delta.images", async () => {
     setTransportPost(async () =>
       makeTransportResponse(
         buildImageGenStreamChunks("resp_chat_img_s", "item_img_e2e_2", "fake_b64_data_stream", "blue square"),
@@ -459,33 +469,17 @@ describe("E2E: POST /v1/chat/completions", () => {
     const text = await res.text();
     const chunks = parseOpenAISSE(text);
 
-    const toolCallChunks = chunks.filter((c) => {
-      const choices = c.choices as Array<{ delta?: { tool_calls?: unknown } }> | undefined;
-      return choices?.[0]?.delta?.tool_calls;
+    const imageChunks = chunks.filter((c) => {
+      const choices = c.choices as Array<{ delta?: { images?: unknown } }> | undefined;
+      return choices?.[0]?.delta?.images;
     });
-
-    // Per OpenAI streaming spec: start chunk (id+name+empty args) + arguments chunk
-    expect(toolCallChunks).toHaveLength(2);
-
-    type ToolCallChunk = Array<{
-      index: number;
-      id?: string;
-      type?: string;
-      function?: { name?: string; arguments?: string };
+    expect(imageChunks).toHaveLength(1);
+    const imageChoices = imageChunks[0].choices as Array<{
+      delta: { images: Array<{ image_url: { url: string } }> };
     }>;
-
-    const startChunkChoices = toolCallChunks[0].choices as Array<{ delta?: { tool_calls?: ToolCallChunk } }>;
-    const startTc = startChunkChoices[0].delta!.tool_calls![0];
-    expect(startTc.id).toBe("item_img_e2e_2");
-    expect(startTc.type).toBe("function");
-    expect(startTc.function?.name).toBe("image_generation");
-    expect(startTc.function?.arguments).toBe("");
-
-    const argsChunkChoices = toolCallChunks[1].choices as Array<{ delta?: { tool_calls?: ToolCallChunk } }>;
-    const argsTc = argsChunkChoices[0].delta!.tool_calls![0];
-    expect(argsTc.id).toBeUndefined();
-    const args = JSON.parse(argsTc.function!.arguments!);
-    expect(args.result).toBe("fake_b64_data_stream");
-    expect(args.revised_prompt).toBe("blue square");
+    expect(imageChoices[0].delta.images[0].image_url.url)
+      .toBe("data:image/png;base64,fake_b64_data_stream");
+    const finalChoices = chunks.at(-1)?.choices as Array<{ finish_reason?: string }>;
+    expect(finalChoices[0].finish_reason).toBe("stop");
   });
 });

@@ -20,6 +20,7 @@ import { toErrorStatus } from "./proxy-error-handler.js";
 import { annotateImageGenOutcome, buildCodexApi, stripCodexErrorPrefix } from "./proxy-handler-utils.js";
 import { createResponseMetadataCollector } from "./response-metadata-collector.js";
 import { withRetry } from "../../utils/retry.js";
+import { prepareImageGenerationRequest } from "./image-generation-tool.js";
 import { recordProxyEgressLog } from "./proxy-egress-log.js";
 import { recordStreamCloseEvent } from "../../logs/stream-close-event.js";
 import { logProxyUsage } from "./proxy-usage-log.js";
@@ -297,16 +298,25 @@ export async function retryNonStreamingEmptyResponse(
 
   const nextApi = buildCodexApi(acquired.token, acquired.accountId, cookieJar, acquired.entryId, proxyPool);
   setActiveAccount?.(acquired.entryId, nextApi);
+  const prepared = prepareImageGenerationRequest(req.codexRequest, {
+    autoInject: req.autoInjectImageGeneration === true,
+    planType: accountPool.getEntry(acquired.entryId)?.planType,
+    responsesLite: req.responsesLite,
+  });
+  req.expectsImageGen = prepared.expectsImageGeneration;
+  const loggedRequest = prepared.request === req.codexRequest
+    ? req
+    : { ...req, codexRequest: prepared.request };
 
   const retryStartMs = nowMs();
   try {
     const rawResponse = await withRetry(
-      () => nextApi.createResponse(req.codexRequest, abortSignal, undefined, buildPoolCtx?.(acquired.entryId)),
+      () => nextApi.createResponse(prepared.request, abortSignal, undefined, buildPoolCtx?.(acquired.entryId)),
       { tag },
     );
     recordProxyEgressLog({
       requestId,
-      request: req,
+      request: loggedRequest,
       status: rawResponse.status,
       startMs: retryStartMs,
     });

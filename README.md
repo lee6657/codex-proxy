@@ -232,6 +232,8 @@ curl http://localhost:8080/v1/chat/completions \
 
 > `/v1/models` 是所有能力的模型目录，不代表每个模型都支持聊天接口。图片模型仅支持 `/v1/images/generations` 与 `/v1/images/edits`；发送到 `/v1/chat/completions` 会返回 `unsupported_endpoint`。
 
+聊天客户端要通过自然语言生图时，请选择 `gpt-5.4` 等 **GPT 文本模型**。代理会为 Codex 文本请求自动挂载 `image_generation` 工具，由模型根据“生成一张图片”或“修改这张图”等指令决定是否调用；不要在聊天接口中选择 `gpt-image-2`。OpenAI Chat 的图片通过非流式 `choices[].message.images[]` 或流式 `choices[].delta.images[]` 返回，Gemini 通过 `inlineData` 返回。
+
 **前提**：ChatGPT **Plus 及以上** 账号（free 账号上游会静默剥掉工具，模型会降级用 SVG 文本假装画图）。
 
 ```bash
@@ -250,9 +252,9 @@ curl http://localhost:8080/v1/images/generations \
 
 事件流里 `image_generation_call` item 的 `result` 字段即 base64 编码的图像；`revised_prompt` 是上游改写后的最终提示词。
 
-**编辑模式**：使用标准 `/v1/images/edits` multipart 接口上传参考图：`curl -F "model=gpt-image-2" -F "prompt=把天空改成黄昏" -F "image=@source.png" http://localhost:8080/v1/images/edits`。直连模式支持 `mask`；工具回退不支持 mask。也可以继续在原生 Responses 请求的 user `content` 中加入 `{"type":"input_image","image_url":"data:image/png;base64,..."}`。
+**编辑模式**：使用标准 `/v1/images/edits` multipart 接口上传参考图：`curl -F "model=gpt-image-2" -F "prompt=把天空改成黄昏" -F "image=@source.png" http://localhost:8080/v1/images/edits`。直连模式支持 `mask`；工具回退不支持 mask。聊天客户端也可以把参考图作为 `image_url` 与修改指令一起发给 GPT 文本模型；原生 Responses 请求则在 user `content` 中加入 `{"type":"input_image","image_url":"data:image/png;base64,..."}`。
 
-> `/v1/chat/completions` 兼容路径会接受 `image_generation` 工具，避免 OpenAI 客户端因 schema 失败；但图像 payload 只有 `/v1/responses` 会稳定透出 `image_generation_call.result`。需要拿到图片字节时请使用 `/v1/responses`。
+如需关闭自动工具挂载，在 `data/local.yaml` 中设置 `model: { auto_image_generation: false }`。客户端显式传入的图片工具和 `/v1/images/*` 不受影响。
 
 ## 🔗 客户端接入
 
@@ -522,7 +524,7 @@ server:
 | `server` | `host`, `port`, `proxy_api_key` | 监听地址与 API 密钥 |
 | `api` | `base_url`, `timeout_seconds` | 上游 API 地址与超时 |
 | `client` | `app_version`, `build_number`, `chromium_version` | 模拟的 Codex Desktop 版本 |
-| `model` | `default`, `default_reasoning_effort`, `default_service_tier`, `aliases`, `custom_models`, `inject_desktop_context` | 默认模型、推理配置、模型映射与自定义模型目录 |
+| `model` | `default`, `default_reasoning_effort`, `default_service_tier`, `aliases`, `custom_models`, `auto_image_generation`, `inject_desktop_context` | 默认模型、推理配置、自动生图工具、模型映射与自定义模型目录 |
 | `auth` | `rotation_strategy`, `rate_limit_backoff_seconds` | 轮换策略与限流退避 |
 | `tls` | `proxy_url`, `force_http11` | TLS 代理与 HTTP 版本 |
 | `quota` | `refresh_interval_minutes`, `warning_thresholds`, `skip_exhausted` | 用量快照、阈值配置与耗尽账号跳过 |

@@ -329,6 +329,14 @@ export interface ChatCompletionToolCall {
   };
 }
 
+export interface ChatCompletionImage {
+  type: "image_url";
+  index: number;
+  image_url: {
+    url: string;
+  };
+}
+
 export interface ChatCompletionChoice {
   index: number;
   message: {
@@ -336,6 +344,7 @@ export interface ChatCompletionChoice {
     content: string | null;
     reasoning_content?: string | null;
     tool_calls?: ChatCompletionToolCall[];
+    images?: ChatCompletionImage[];
   };
   finish_reason: "stop" | "length" | "tool_calls" | "function_call" | null;
 }
@@ -378,6 +387,7 @@ export interface ChatCompletionChunkDelta {
   content?: string | null;
   reasoning_content?: string | null;
   tool_calls?: ChatCompletionChunkToolCall[];
+  images?: ChatCompletionImage[];
 }
 
 export interface ChatCompletionChunkChoice {

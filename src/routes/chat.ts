@@ -134,6 +134,7 @@ export function createChatRoutes(
       clientConversationId: req.user,
       tupleSchema,
       expectsImageGen,
+      autoInjectImageGeneration: getConfig().model.auto_image_generation !== false,
     };
 
     const requestId = c.get("requestId") ?? randomUUID().slice(0, 8);

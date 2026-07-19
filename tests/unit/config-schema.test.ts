@@ -40,6 +40,7 @@ describe("ConfigSchema", () => {
     expect(result.model.default_reasoning_effort).toBeNull();
     expect(result.model.aliases).toEqual({});
     expect(result.model.custom_models).toEqual([]);
+    expect(result.model.auto_image_generation).toBe(true);
     expect(result.tls.force_http11).toBe(false);
     expect(result.tls.health_check_url).toBe("https://api.ipify.org?format=json");
     expect(result.usage_stats.snapshot_interval_minutes).toBe(5);

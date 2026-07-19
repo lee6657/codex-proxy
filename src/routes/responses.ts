@@ -42,6 +42,8 @@ const X_CODEX_BETA_FEATURES_HEADER = "x-codex-beta-features";
 const X_RESPONSESAPI_INCLUDE_TIMING_METRICS_HEADER = "x-responsesapi-include-timing-metrics";
 const X_CODEX_PARENT_THREAD_ID_HEADER = "x-codex-parent-thread-id";
 const X_CODEX_WINDOW_ID_HEADER = "x-codex-window-id";
+const X_CODEX_RESPONSES_LITE_HEADER = "x-openai-internal-codex-responses-lite";
+const X_CODEX_RESPONSES_LITE_METADATA = "ws_request_header_x_openai_internal_codex_responses_lite";
 
 // ── Helpers ───────────────────────────────────────────────────────
 
@@ -55,6 +57,20 @@ function firstHeaderOrMetadata(
   headerName: string,
 ): string | null {
   return nonEmptyString(c.req.header(headerName)) ?? nonEmptyString(metadata[headerName]);
+}
+
+function isResponsesLiteRequest(
+  c: Context,
+  metadata: Record<string, string>,
+  rawMetadata: unknown,
+): boolean {
+  const rawValue = isRecord(rawMetadata) ? rawMetadata[X_CODEX_RESPONSES_LITE_METADATA] : undefined;
+  if (rawValue === true) return true;
+  return [
+    c.req.header(X_CODEX_RESPONSES_LITE_HEADER),
+    metadata[X_CODEX_RESPONSES_LITE_METADATA],
+    typeof rawValue === "string" ? rawValue : undefined,
+  ].some((value) => value?.trim().toLowerCase() === "true");
 }
 
 // ── Auth check ────────────────────────────────────────────────────
@@ -243,6 +259,8 @@ export function createResponsesRoutes(
       isStreaming: clientWantsStream,
       tupleSchema,
       expectsImageGen,
+      autoInjectImageGeneration: config.model.auto_image_generation !== false,
+      responsesLite: isResponsesLiteRequest(c, clientMetadata, body.client_metadata),
     };
 
     const requestId = c.get("requestId") ?? randomUUID().slice(0, 8);

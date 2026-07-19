@@ -92,7 +92,14 @@ export interface ExtractedEvent {
   imageGenerationDone?: {
     id: string;
     result: string;
+    outputFormat?: string;
     revised_prompt?: string;
+  };
+  imageGenerationPartial?: {
+    id: string;
+    result: string;
+    index: number;
+    outputFormat?: string;
   };
 }
 
@@ -171,9 +178,19 @@ export async function* iterateCodexEvents(
           extracted.imageGenerationDone = {
             id: typed.item.id || "",
             result: typed.item.result || "",
+            outputFormat: typed.item.output_format,
             revised_prompt: typed.item.revised_prompt,
           };
         }
+        break;
+
+      case "response.image_generation_call.partial_image":
+        extracted.imageGenerationPartial = {
+          id: typed.itemId,
+          result: typed.partialImageB64,
+          index: typed.partialImageIndex,
+          outputFormat: typed.outputFormat,
+        };
         break;
 
       case "response.content_part.added":

@@ -16,7 +16,8 @@ export function annotateImageGenOutcome(
   usage: UsageInfo | undefined,
   expectsImageGen: boolean | undefined,
 ): UsageInfo | undefined {
-  if (!expectsImageGen) return usage;
+  const imageToolProducedUsage = (usage?.image_input_tokens ?? 0) > 0 || (usage?.image_output_tokens ?? 0) > 0;
+  if (!expectsImageGen && !imageToolProducedUsage) return usage;
   const succeeded = (usage?.image_output_tokens ?? 0) > 0;
   if (usage) {
     return { ...usage, image_request_attempted: true, image_request_succeeded: succeeded };

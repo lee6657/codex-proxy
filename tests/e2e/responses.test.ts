@@ -213,6 +213,34 @@ describe("E2E: POST /v1/responses", () => {
     expect(sentBody.reasoning?.effort).toBe("high");
     // Fast suffix should survive the final Codex API serialization as upstream's priority tier.
     expect(sentBody.service_tier).toBe("priority");
+    expect(sentBody.tools).toEqual([{ type: "image_generation", output_format: "png" }]);
+  });
+
+  it("does not inject image_generation for Responses Lite", async () => {
+    const res = await ctx.app.request("/v1/responses", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-OpenAI-Internal-Codex-Responses-Lite": "true",
+      },
+      body: JSON.stringify(defaultBody()),
+    });
+    expect(res.status).toBe(200);
+    await res.text();
+    const sentBody = JSON.parse(getLastTransportBody()!);
+    expect(sentBody.tools).toBeUndefined();
+  });
+
+  it("recognizes boolean Responses Lite client_metadata", async () => {
+    const res = await responsesRequest(defaultBody({
+      client_metadata: {
+        ws_request_header_x_openai_internal_codex_responses_lite: true,
+      },
+    }));
+    expect(res.status).toBe(200);
+    await res.text();
+    const sentBody = JSON.parse(getLastTransportBody()!);
+    expect(sentBody.tools).toBeUndefined();
   });
 
   it("unauthenticated: returns 401 with invalid_api_key", async () => {

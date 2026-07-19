@@ -30,6 +30,10 @@ export interface ProxyRequest {
    *  Used to attribute success/failure to the image_generation request counters
    *  even when the upstream call fails before the first SSE event arrives. */
   expectsImageGen?: boolean;
+  /** Allow the Codex execution path to append image_generation for capable clients. */
+  autoInjectImageGeneration?: boolean;
+  /** Responses Lite does not support the hosted image_generation tool. */
+  responsesLite?: boolean;
 }
 
 export interface UsageHint {

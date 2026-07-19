@@ -196,3 +196,65 @@ describe("collectCodexToGeminiResponse — additional details", () => {
     expect(response.usageMetadata?.totalTokenCount).toBe(15);
   });
 });
+
+describe("image generation translation", () => {
+  const imageEvents: ExtractedEvent[] = [
+    {
+      typed: { type: "response.created", response: { id: "resp_image" } },
+      responseId: "resp_image",
+    },
+    {
+      typed: {
+        type: "response.output_item.done",
+        outputIndex: 0,
+        item: { type: "image_generation_call", id: "img_1", result: "image_b64", output_format: "webp" },
+      },
+      imageGenerationDone: { id: "img_1", result: "image_b64", outputFormat: "webp" },
+    },
+    {
+      typed: { type: "response.completed", response: { id: "resp_image", usage: { input_tokens: 2, output_tokens: 3 } } },
+      responseId: "resp_image",
+      usage: { input_tokens: 2, output_tokens: 3 },
+    },
+  ];
+
+  it("streams images as inlineData", async () => {
+    const chunks = await collectStreamOutput(imageEvents);
+    const imageChunk = chunks.find((chunk) => chunk.includes("inlineData"));
+    expect(imageChunk).toBeDefined();
+    const parsed = JSON.parse(imageChunk!.slice(6));
+    expect(parsed.candidates[0].content.parts[0].inlineData).toEqual({
+      data: "image_b64",
+      mimeType: "image/webp",
+    });
+  });
+
+  it("collects images as inlineData", async () => {
+    mockEvents = imageEvents;
+    const { response } = await collectCodexToGeminiResponse(fakeCodexApi, fakeResponse, "gpt-5.4");
+    expect(response.candidates[0].content.parts[0].inlineData).toEqual({
+      data: "image_b64",
+      mimeType: "image/webp",
+    });
+  });
+
+  it("deduplicates identical partial and final images", async () => {
+    const events: ExtractedEvent[] = [
+      imageEvents[0],
+      {
+        typed: {
+          type: "response.image_generation_call.partial_image",
+          itemId: "img_1",
+          partialImageB64: "image_b64",
+          partialImageIndex: 0,
+          outputFormat: "webp",
+        },
+        imageGenerationPartial: { id: "img_1", result: "image_b64", index: 0, outputFormat: "webp" },
+      },
+      imageEvents[1],
+      imageEvents[2],
+    ];
+    const chunks = await collectStreamOutput(events);
+    expect(chunks.filter((chunk) => chunk.includes("inlineData"))).toHaveLength(1);
+  });
+});

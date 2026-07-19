@@ -355,48 +355,78 @@ describe("image generation translation", () => {
           type: "image_generation_call",
           id: "item_img_123",
           result: "fake_base64_image_content",
+          output_format: "jpeg",
           revised_prompt: "a beautiful red circle on white background",
         }
       },
       imageGenerationDone: {
         id: "item_img_123",
         result: "fake_base64_image_content",
+        outputFormat: "jpeg",
         revised_prompt: "a beautiful red circle on white background",
       }
     },
     createCompleted("resp_img", { input_tokens: 10, output_tokens: 10 }),
   ];
 
-  it("streamCodexToOpenAI translates imageGenerationDone event into tool_calls", async () => {
+  it("streamCodexToOpenAI translates imageGenerationDone into delta.images", async () => {
     const chunks = await collectStreamOutput(imgEvents);
     const parsedChunks = chunks
       .filter((c) => c.startsWith("data: {"))
       .map((c) => JSON.parse(c.replace("data: ", "")));
-    const toolCallChunks = parsedChunks.filter((p) => p.choices[0].delta?.tool_calls);
-    // Per OpenAI streaming spec: start chunk (id+name+empty args) + arguments chunk
-    expect(toolCallChunks).toHaveLength(2);
-
-    const startTc = toolCallChunks[0].choices[0].delta.tool_calls[0];
-    expect(startTc.id).toBe("item_img_123");
-    expect(startTc.type).toBe("function");
-    expect(startTc.function.name).toBe("image_generation");
-    expect(startTc.function.arguments).toBe("");
-
-    const argsTc = toolCallChunks[1].choices[0].delta.tool_calls[0];
-    expect(argsTc.id).toBeUndefined();
-    const args = JSON.parse(argsTc.function.arguments);
-    expect(args.result).toBe("fake_base64_image_content");
-    expect(args.revised_prompt).toBe("a beautiful red circle on white background");
+    const imageChunks = parsedChunks.filter((p) => p.choices[0].delta?.images);
+    expect(imageChunks).toHaveLength(1);
+    expect(imageChunks[0].choices[0].delta.images[0]).toEqual({
+      type: "image_url",
+      index: 0,
+      image_url: { url: "data:image/jpeg;base64,fake_base64_image_content" },
+    });
+    expect(parsedChunks.at(-1)?.choices[0].finish_reason).toBe("stop");
   });
 
-  it("collectCodexResponse translates imageGenerationDone event into tool_calls", async () => {
+  it("collectCodexResponse translates imageGenerationDone into message.images", async () => {
     mockEvents = imgEvents;
     const { response } = await collectCodexResponse(fakeCodexApi, fakeResponse, "gpt-5.4");
-    expect(response.choices[0].message.tool_calls).toBeDefined();
-    const toolCall = response.choices[0].message.tool_calls![0];
-    expect(toolCall.function.name).toBe("image_generation");
-    const args = JSON.parse(toolCall.function.arguments);
-    expect(args.result).toBe("fake_base64_image_content");
-    expect(args.revised_prompt).toBe("a beautiful red circle on white background");
+    expect(response.choices[0].message.tool_calls).toBeUndefined();
+    expect(response.choices[0].message.images).toEqual([{
+      type: "image_url",
+      index: 0,
+      image_url: { url: "data:image/jpeg;base64,fake_base64_image_content" },
+    }]);
+    expect(response.choices[0].finish_reason).toBe("stop");
+  });
+
+  it("deduplicates an identical partial and final image", async () => {
+    const events: ExtractedEvent[] = [
+      createCreated("resp_img_partial"),
+      {
+        typed: {
+          type: "response.image_generation_call.partial_image",
+          itemId: "item_img_partial",
+          partialImageB64: "same_base64",
+          partialImageIndex: 0,
+          outputFormat: "webp",
+        },
+        imageGenerationPartial: {
+          id: "item_img_partial",
+          result: "same_base64",
+          index: 0,
+          outputFormat: "webp",
+        },
+      },
+      {
+        typed: {
+          type: "response.output_item.done",
+          outputIndex: 0,
+          item: { type: "image_generation_call", id: "item_img_partial", result: "same_base64", output_format: "webp" },
+        },
+        imageGenerationDone: { id: "item_img_partial", result: "same_base64", outputFormat: "webp" },
+      },
+      createCompleted("resp_img_partial", { input_tokens: 1, output_tokens: 1 }),
+    ];
+    const chunks = await collectStreamOutput(events);
+    const imageChunks = chunks.filter((chunk) => chunk.includes('"images"'));
+    expect(imageChunks).toHaveLength(1);
+    expect(imageChunks[0]).toContain("data:image/webp;base64,same_base64");
   });
 });

@@ -10,6 +10,7 @@ import {
   applyRateLimitHeaders,
   type RateLimitAccountPool,
 } from "./proxy-rate-limit.js";
+import { prepareImageGenerationRequest } from "./image-generation-tool.js";
 
 export interface ProxyUpstreamAttemptApi {
   createResponse(
@@ -62,6 +63,15 @@ export async function sendProxyUpstreamAttempt(
     retryOptions,
   } = options;
   const nowMs = options.nowMs ?? Date.now;
+  const prepared = prepareImageGenerationRequest(request.codexRequest, {
+    autoInject: request.autoInjectImageGeneration === true,
+    planType: accountPool.getEntry(entryId)?.planType,
+    responsesLite: request.responsesLite,
+  });
+  request.expectsImageGen = prepared.expectsImageGeneration;
+  const loggedRequest = prepared.request === request.codexRequest
+    ? request
+    : { ...request, codexRequest: prepared.request };
 
   const applyRateLimits = (rateLimits: ParsedRateLimit): void => {
     applyParsedRateLimits({ accountPool, entryId, rateLimits });
@@ -75,15 +85,15 @@ export async function sendProxyUpstreamAttempt(
     conversationId,
     implicitResumeActive,
     resumeReason,
-    payload: request.codexRequest,
+    payload: prepared.request,
   });
   const rawResponse = await withRetry(
-    () => api.createResponse(request.codexRequest, abortSignal, applyRateLimits, buildPoolCtx()),
+    () => api.createResponse(prepared.request, abortSignal, applyRateLimits, buildPoolCtx()),
     { tag, ...retryOptions },
   );
   recordProxyEgressLog({
     requestId,
-    request,
+    request: loggedRequest,
     status: rawResponse.status,
     startMs,
   });

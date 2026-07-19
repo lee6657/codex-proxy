@@ -207,3 +207,32 @@ describe("parseCodexEvent — tool_usage.image_gen extraction", () => {
     }
   });
 });
+
+describe("parseCodexEvent - image generation events", () => {
+  it("parses partial images with their output format", () => {
+    const result = parseCodexEvent(makeRaw("response.image_generation_call.partial_image", {
+      item_id: "img_1",
+      partial_image_b64: "partial_b64",
+      partial_image_index: 2,
+      output_format: "jpeg",
+    }));
+    expect(result).toEqual({
+      type: "response.image_generation_call.partial_image",
+      itemId: "img_1",
+      partialImageB64: "partial_b64",
+      partialImageIndex: 2,
+      outputFormat: "jpeg",
+    });
+  });
+
+  it("preserves output_format on completed image items", () => {
+    const result = parseCodexEvent(makeRaw("response.output_item.done", {
+      output_index: 0,
+      item: { type: "image_generation_call", id: "img_1", result: "final_b64", output_format: "webp" },
+    }));
+    expect(result.type).toBe("response.output_item.done");
+    if (result.type === "response.output_item.done") {
+      expect(result.item.output_format).toBe("webp");
+    }
+  });
+});

@@ -10,13 +10,14 @@
  * Non-streaming: collect all text, return chat.completion response.
  */
 
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import type { UpstreamAdapter } from "../proxy/upstream-adapter.js";
 import type {
   ChatCompletionResponse,
   ChatCompletionChunk,
   ChatCompletionToolCall,
   ChatCompletionChunkToolCall,
+  ChatCompletionImage,
 } from "../types/openai.js";
 import {
   iterateCodexEvents,
@@ -31,6 +32,30 @@ import { debugDump, debugDumpEnabled } from "../utils/debug-dump.js";
 /** Format an SSE chunk for streaming output */
 function formatSSE(chunk: ChatCompletionChunk): string {
   return `data: ${JSON.stringify(chunk)}\n\n`;
+}
+
+function imageMimeType(outputFormat?: string): string {
+  switch (outputFormat?.toLowerCase()) {
+    case "jpg":
+    case "jpeg":
+      return "image/jpeg";
+    case "webp":
+      return "image/webp";
+    default:
+      return "image/png";
+  }
+}
+
+function imageHash(base64: string): string {
+  return createHash("sha256").update(base64).digest("hex");
+}
+
+function makeChatImage(base64: string, outputFormat: string | undefined, index: number): ChatCompletionImage {
+  return {
+    type: "image_url",
+    index,
+    image_url: { url: `data:${imageMimeType(outputFormat)};base64,${base64}` },
+  };
 }
 
 /**
@@ -59,6 +84,37 @@ export async function* streamCodexToOpenAI(
   let nextToolCallIndex = 0;
   // Track which call_ids have received argument deltas
   const callIdsWithDeltas = new Set<string>();
+  const imageIndexByItemId = new Map<string, number>();
+  const lastImageHashByItemId = new Map<string, string>();
+  let nextImageIndex = 0;
+
+  const imageChunk = (
+    itemId: string,
+    base64: string,
+    outputFormat?: string,
+  ): ChatCompletionChunk | null => {
+    if (!base64) return null;
+    const dedupeKey = itemId || "__image__";
+    const hash = imageHash(base64);
+    if (lastImageHashByItemId.get(dedupeKey) === hash) return null;
+    lastImageHashByItemId.set(dedupeKey, hash);
+    let imageIndex = imageIndexByItemId.get(dedupeKey);
+    if (imageIndex === undefined) {
+      imageIndex = nextImageIndex++;
+      imageIndexByItemId.set(dedupeKey, imageIndex);
+    }
+    return {
+      id: chunkId,
+      object: "chat.completion.chunk",
+      created,
+      model,
+      choices: [{
+        index: 0,
+        delta: { role: "assistant", images: [makeChatImage(base64, outputFormat, imageIndex)] },
+        finish_reason: null,
+      }],
+    };
+  };
 
   // Send initial role chunk
   yield formatSSE({
@@ -83,55 +139,29 @@ export async function* streamCodexToOpenAI(
       throw codexApiErrorFromEvent(evt.error);
     }
 
+    if (evt.imageGenerationPartial) {
+      const chunk = imageChunk(
+        evt.imageGenerationPartial.id,
+        evt.imageGenerationPartial.result,
+        evt.imageGenerationPartial.outputFormat,
+      );
+      if (chunk) {
+        hasContent = true;
+        yield formatSSE(chunk);
+      }
+      continue;
+    }
+
     if (evt.imageGenerationDone) {
-      hasToolCalls = true;
-      hasContent = true;
-      const idx = nextToolCallIndex++;
-      const argsJson = JSON.stringify({
-        result: evt.imageGenerationDone.result,
-        ...(evt.imageGenerationDone.revised_prompt !== undefined
-          ? { revised_prompt: evt.imageGenerationDone.revised_prompt }
-          : {}),
-      });
-      // Start chunk: id + type + name (arguments empty per OpenAI streaming spec)
-      yield formatSSE({
-        id: chunkId,
-        object: "chat.completion.chunk",
-        created,
-        model,
-        choices: [
-          {
-            index: 0,
-            delta: {
-              tool_calls: [
-                {
-                  index: idx,
-                  id: evt.imageGenerationDone.id,
-                  type: "function",
-                  function: { name: "image_generation", arguments: "" },
-                },
-              ],
-            },
-            finish_reason: null,
-          },
-        ],
-      });
-      // Arguments chunk: arguments content (no id/type per OpenAI streaming spec)
-      yield formatSSE({
-        id: chunkId,
-        object: "chat.completion.chunk",
-        created,
-        model,
-        choices: [
-          {
-            index: 0,
-            delta: {
-              tool_calls: [{ index: idx, function: { arguments: argsJson } }],
-            },
-            finish_reason: null,
-          },
-        ],
-      });
+      const chunk = imageChunk(
+        evt.imageGenerationDone.id,
+        evt.imageGenerationDone.result,
+        evt.imageGenerationDone.outputFormat,
+      );
+      if (chunk) {
+        hasContent = true;
+        yield formatSSE(chunk);
+      }
       continue;
     }
 
@@ -377,6 +407,7 @@ export async function collectCodexResponse(
 
   // Collect tool calls
   const toolCalls: ChatCompletionToolCall[] = [];
+  const images: ChatCompletionImage[] = [];
 
   const dumpEnabled = debugDumpEnabled();
   const eventTrace: unknown[] = [];
@@ -415,24 +446,17 @@ export async function collectCodexResponse(
       });
     }
     if (evt.imageGenerationDone) {
-      toolCalls.push({
-        id: evt.imageGenerationDone.id,
-        type: "function",
-        function: {
-          name: "image_generation",
-          arguments: JSON.stringify({
-            result: evt.imageGenerationDone.result,
-            ...(evt.imageGenerationDone.revised_prompt !== undefined
-              ? { revised_prompt: evt.imageGenerationDone.revised_prompt }
-              : {}),
-          }),
-        },
-      });
+      if (!evt.imageGenerationDone.result) continue;
+      images.push(makeChatImage(
+        evt.imageGenerationDone.result,
+        evt.imageGenerationDone.outputFormat,
+        images.length,
+      ));
     }
   }
 
   // Detect empty response (HTTP 200 but no content)
-  if (!fullText && toolCalls.length === 0 && completionTokens === 0) {
+  if (!fullText && toolCalls.length === 0 && images.length === 0 && completionTokens === 0) {
     if (dumpEnabled) {
       debugDump("empty-response-openai", {
         model,
@@ -477,6 +501,9 @@ export async function collectCodexResponse(
   }
   if (hasToolCalls) {
     message.tool_calls = toolCalls;
+  }
+  if (images.length > 0) {
+    message.images = images;
   }
 
   return {

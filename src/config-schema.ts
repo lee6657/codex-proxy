@@ -84,6 +84,7 @@ export const ConfigSchema = z.object({
     default_service_tier: z.string().nullable().default(null),
     aliases: z.record(z.string(), z.string()).default({}),
     custom_models: z.array(CustomModelSchema).default([]),
+    auto_image_generation: z.boolean().default(true),
     inject_desktop_context: z.boolean().default(false),
     suppress_desktop_directives: z.boolean().default(true),
   }),
