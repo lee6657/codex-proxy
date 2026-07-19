@@ -18,7 +18,7 @@ OpenAI-compatible chat completion.
   "model": "o4-mini",
   "messages": [{"role": "user", "content": "Hello"}],
   "stream": true,
-  "reasoning_effort": "medium"  // optional: low | medium | high | xhigh
+  "reasoning_effort": "medium"  // optional: none | low | medium | high | xhigh
 }
 ```
 

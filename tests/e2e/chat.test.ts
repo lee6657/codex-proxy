@@ -240,6 +240,17 @@ describe("E2E: POST /v1/chat/completions", () => {
     expect(sentBody.reasoning?.effort).toBe("high");
   });
 
+  it("accepts OpenWebUI title requests with reasoning_effort none", async () => {
+    const res = await chatRequest(defaultBody({
+      model: "gpt-5.4-high",
+      messages: [{ role: "user", content: "Create a concise title for this chat" }],
+      reasoning_effort: "none",
+    }));
+    expect(res.status).toBe(200);
+    const sentBody = JSON.parse(getLastTransportBody()!);
+    expect(sentBody.reasoning).toBeUndefined();
+  });
+
   it("Cursor-style Responses payload: normalizes input and tools before forwarding", async () => {
     const res = await chatRequest({
       model: "gpt-5.4",

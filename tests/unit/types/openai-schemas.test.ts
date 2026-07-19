@@ -213,6 +213,18 @@ describe("ChatCompletionRequestSchema", () => {
     }
   });
 
+  it("parses reasoning_effort none for OpenWebUI compatibility", () => {
+    const result = ChatCompletionRequestSchema.safeParse({
+      model: "gpt-5.4",
+      messages: [{ role: "user", content: "Create a concise title" }],
+      reasoning_effort: "none",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.reasoning_effort).toBe("none");
+    }
+  });
+
   it("parses service_tier", () => {
     const result = ChatCompletionRequestSchema.safeParse({
       model: "gpt-5.4",

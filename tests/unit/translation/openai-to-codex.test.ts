@@ -159,6 +159,14 @@ describe("translateToCodexRequest", () => {
     expect(result.reasoning?.effort).toBe("low");
   });
 
+  it("reasoning_effort none disables suffix and default reasoning", () => {
+    const result = translateToCodexRequest(makeRequest({
+      model: "gpt-5.4-high",
+      reasoning_effort: "none",
+    }));
+    expect(result.reasoning).toBeUndefined();
+  });
+
   it("does not set reasoning when no effort is configured or requested", () => {
     const result = translateToCodexRequest(makeRequest());
     expect(result.reasoning).toBeUndefined();

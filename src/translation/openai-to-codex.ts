@@ -183,10 +183,11 @@ export function translateToCodexRequest(
   }
 
   // Reasoning effort: explicit API field > suffix > config default
-  const effort =
-    req.reasoning_effort ??
-    parsed.reasoningEffort ??
-    cfg.default_reasoning_effort;
+  const effort = req.reasoning_effort === "none"
+    ? null
+    : req.reasoning_effort ??
+      parsed.reasoningEffort ??
+      cfg.default_reasoning_effort;
   if (effort) {
     request.reasoning = { effort, summary: "auto" };
   }
