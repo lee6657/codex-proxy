@@ -139,6 +139,20 @@ describe("E2E: Gemini endpoints", () => {
     expect(final.usageMetadata).toBeDefined();
     expect(final.usageMetadata!.totalTokenCount).toBe(15);
     const sentBody = JSON.parse(getLastTransportBody()!);
+    expect(sentBody.tools).toEqual([]);
+  });
+
+  it("automatically adds image_generation for an explicit Gemini image request", async () => {
+    const res = await ctx.app.request("/v1beta/models/codex:streamGenerateContent?alt=sse", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(defaultBody({
+        contents: [{ role: "user", parts: [{ text: "Generate an image of a lighthouse" }] }],
+      })),
+    });
+    expect(res.status).toBe(200);
+    await res.text();
+    const sentBody = JSON.parse(getLastTransportBody()!);
     expect(sentBody.tools).toEqual([{ type: "image_generation", output_format: "png" }]);
   });
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  hasImageGenerationIntent,
   hasImageGenerationTool,
   prepareImageGenerationRequest,
 } from "@src/routes/shared/image-generation-tool.js";
@@ -69,6 +70,64 @@ describe("prepareImageGenerationRequest", () => {
     });
     expect(prepared.request).toBe(original);
     expect(prepared.expectsImageGeneration).toBe(false);
+  });
+
+  it("does not inject into ordinary text chat", () => {
+    const original = {
+      ...request(),
+      input: [{ role: "user" as const, content: "Explain how DNS caching works" }],
+    };
+    const prepared = prepareImageGenerationRequest(original, {
+      autoInject: true,
+      planType: "plus",
+    });
+
+    expect(prepared.request).toBe(original);
+    expect(prepared.injected).toBe(false);
+    expect(prepared.expectsImageGeneration).toBe(false);
+  });
+
+  it.each([
+    "generate an image of a lighthouse at night",
+    "Please edit this photo to use a blue background",
+    "帮我画一只戴帽子的猫",
+    "生成一张香港夜景图片",
+    "把这张图片的背景换成白色",
+  ])("detects image intent in the latest user message: %s", (content) => {
+    const original = { ...request(), input: [{ role: "user" as const, content }] };
+    expect(hasImageGenerationIntent(original)).toBe(true);
+  });
+
+  it("uses only the latest user turn when deciding whether to inject", () => {
+    const original = {
+      ...request(),
+      input: [
+        { role: "user" as const, content: "generate an image of a lighthouse" },
+        { role: "assistant" as const, content: "Done" },
+        { role: "user" as const, content: "Now explain the history of lighthouses" },
+      ],
+    };
+
+    expect(hasImageGenerationIntent(original)).toBe(false);
+    expect(prepareImageGenerationRequest(original, {
+      autoInject: true,
+      planType: "plus",
+    }).request).toBe(original);
+  });
+
+  it("recognizes an edit request with a referenced image without requiring the word image", () => {
+    const original = {
+      ...request(),
+      input: [{
+        role: "user" as const,
+        content: [
+          { type: "input_text" as const, text: "change the background to blue" },
+          { type: "input_image" as const, image_url: "data:image/png;base64,aA==" },
+        ],
+      }],
+    };
+
+    expect(hasImageGenerationIntent(original)).toBe(true);
   });
 });
 

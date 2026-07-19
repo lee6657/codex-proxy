@@ -232,7 +232,7 @@ curl http://localhost:8080/v1/chat/completions \
 
 > `/v1/models` 是所有能力的模型目录，不代表每个模型都支持聊天接口。图片模型仅支持 `/v1/images/generations` 与 `/v1/images/edits`；发送到 `/v1/chat/completions` 会返回 `unsupported_endpoint`。
 
-聊天客户端要通过自然语言生图时，请选择 `gpt-5.4` 等 **GPT 文本模型**。代理会为 Codex 文本请求自动挂载 `image_generation` 工具，由模型根据“生成一张图片”或“修改这张图”等指令决定是否调用；不要在聊天接口中选择 `gpt-image-2`。OpenAI Chat 的图片通过非流式 `choices[].message.images[]` 或流式 `choices[].delta.images[]` 返回，Gemini 通过 `inlineData` 返回。
+聊天客户端要通过自然语言生图时，请选择 `gpt-5.4` 等 **GPT 文本模型**。当最新一条用户消息明确要求“生成一张图片”或“修改这张图”等图片操作时，代理会为该请求自动挂载 `image_generation` 工具，再由模型决定是否调用；普通文本聊天不会挂载图片工具。不要在聊天接口中选择 `gpt-image-2`。OpenAI Chat 的图片通过非流式 `choices[].message.images[]` 或流式 `choices[].delta.images[]` 返回，Gemini 通过 `inlineData` 返回。
 
 **前提**：ChatGPT **Plus 及以上** 账号（free 账号上游会静默剥掉工具，模型会降级用 SVG 文本假装画图）。
 

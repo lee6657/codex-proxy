@@ -288,10 +288,6 @@ describe("E2E: POST /v1/chat/completions", () => {
         strict: false,
         description: "Apply a patch",
       },
-      {
-        type: "image_generation",
-        output_format: "png",
-      },
     ]);
     expect(sentBody.reasoning?.effort).toBe("high");
   });
@@ -419,11 +415,20 @@ describe("E2E: POST /v1/chat/completions", () => {
     expect(getMockTransport().post).not.toHaveBeenCalled();
   });
 
-  it("automatically adds image_generation to Codex text requests", async () => {
-    const res = await chatRequest(defaultBody());
+  it("automatically adds image_generation to explicit image requests", async () => {
+    const res = await chatRequest(defaultBody({
+      messages: [{ role: "user", content: "Generate an image of a lighthouse" }],
+    }));
     expect(res.status).toBe(200);
     const sentBody = JSON.parse(getLastTransportBody()!);
     expect(sentBody.tools).toEqual([{ type: "image_generation", output_format: "png" }]);
+  });
+
+  it("keeps ordinary text requests free of image_generation", async () => {
+    const res = await chatRequest(defaultBody());
+    expect(res.status).toBe(200);
+    const sentBody = JSON.parse(getLastTransportBody()!);
+    expect(sentBody.tools).toEqual([]);
   });
 
   it("non-streaming image generation: returns message.images", async () => {

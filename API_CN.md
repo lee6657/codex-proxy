@@ -113,7 +113,7 @@ Codex 原生 `/images/generations`；如果 `gpt-image-2` 的直连接口返回 
 `{"type":"image_generation", ...}` 覆盖参数。工具由文本模型自行决定是否调用，实际生成后端为
 `gpt-image-2`。前提：**ChatGPT Plus 及以上** 账号——free 账号不会自动注入该工具。
 
-`model.auto_image_generation` 默认为 `true`。设置为 `false` 只关闭自动注入，不影响客户端显式工具和
+`model.auto_image_generation` 默认为 `true`。自动注入只会在最新用户消息有明确生图或改图意图时发生，普通文本请求不会携带图片工具。设置为 `false` 只关闭自动注入，不影响客户端显式工具和
 `/v1/images/generations`、`/v1/images/edits`。
 Free 账号、Responses Lite、`*-spark` 模型、Anthropic Messages 以及第三方/自定义上游均不会自动注入。
 

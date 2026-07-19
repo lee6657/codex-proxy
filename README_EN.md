@@ -205,7 +205,7 @@ Standard OpenAI clients can call `/v1/images/generations` directly with `gpt-ima
 
 > `/v1/models` is a capability-wide catalog; it does not imply every model supports chat. Image-only models are supported by `/v1/images/generations` and `/v1/images/edits`, not `/v1/chat/completions`.
 
-To generate images from a chat prompt, select a **GPT text model** such as `gpt-5.4`. The proxy automatically makes the `image_generation` tool available to Codex text requests, and the model decides whether prompts such as "generate an image" or "edit this image" should invoke it. Do not select `gpt-image-2` on the chat endpoint. OpenAI Chat returns generated images in non-streaming `choices[].message.images[]` or streaming `choices[].delta.images[]`; Gemini returns `inlineData` parts.
+To generate images from a chat prompt, select a **GPT text model** such as `gpt-5.4`. When the latest user message explicitly requests an image operation such as "generate an image" or "edit this image", the proxy makes the `image_generation` tool available and lets the model decide whether to invoke it. Ordinary text chats do not receive the image tool. Do not select `gpt-image-2` on the chat endpoint. OpenAI Chat returns generated images in non-streaming `choices[].message.images[]` or streaming `choices[].delta.images[]`; Gemini returns `inlineData` parts.
 
 **Prerequisite**: a **ChatGPT Plus or higher** account (free accounts have the tool silently stripped by upstream, and the model falls back to replying with an SVG snippet).
 

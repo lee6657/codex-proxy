@@ -118,14 +118,14 @@ Native Codex Responses API passthrough (WebSocket transport).
 
 #### image_generation tool
 
-The proxy automatically appends `{"type":"image_generation","output_format":"png"}`
+For requests whose latest user message explicitly asks to generate or edit an image, the proxy automatically appends `{"type":"image_generation","output_format":"png"}`
 to Codex-backed OpenAI Chat, Responses, and Gemini text-model requests. Clients
 can still declare `{"type":"image_generation", ...}` in `tools[]` to override
 its parameters. The text model decides whether to invoke the tool; the actual
 generation backend is `gpt-image-2`. This requires a **ChatGPT Plus or higher**
 account. Automatic injection is skipped for free plans.
 
-`model.auto_image_generation` defaults to `true`. Setting it to `false` only
+Ordinary text requests are left tool-free. `model.auto_image_generation` defaults to `true`. Setting it to `false` only
 disables automatic injection; explicit tools and `/v1/images/generations` or
 `/v1/images/edits` remain available.
 Automatic injection is also skipped for free accounts, Responses Lite,

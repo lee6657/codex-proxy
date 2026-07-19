@@ -213,6 +213,16 @@ describe("E2E: POST /v1/responses", () => {
     expect(sentBody.reasoning?.effort).toBe("high");
     // Fast suffix should survive the final Codex API serialization as upstream's priority tier.
     expect(sentBody.service_tier).toBe("priority");
+    expect(sentBody.tools).toBeUndefined();
+  });
+
+  it("automatically adds image_generation for an explicit Responses image request", async () => {
+    const res = await responsesRequest(defaultBody({
+      input: [{ role: "user", content: "Generate an image of a lighthouse" }],
+    }));
+    expect(res.status).toBe(200);
+    await res.text();
+    const sentBody = JSON.parse(getLastTransportBody()!);
     expect(sentBody.tools).toEqual([{ type: "image_generation", output_format: "png" }]);
   });
 
